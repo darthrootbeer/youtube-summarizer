@@ -1,0 +1,3 @@
+Keep changes small and testable.
+Prefer existing tools over new code.
+Avoid adding new dependencies unless clearly needed.

@@ -1,0 +1,16 @@
+# YouTube channels to monitor.
+#
+# Recommended format:
+# - Use the channel_id URL (it looks like: https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx)
+# - This lets us build the RSS feed without needing API keys.
+#
+# Each entry:
+# - name: friendly label (used in emails)
+# - url: channel URL
+#
+# Example:
+# [[channels]]
+# name = "Example Channel"
+# url  = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
+
+channels = []
