@@ -20,15 +20,25 @@ class Video:
 
 
 _CHANNEL_ID_RE = re.compile(r"(?:youtube\.com/)?channel/(UC[a-zA-Z0-9_-]{20,})")
+_PLAYLIST_ID_RE = re.compile(r"(?:list=)(PL[a-zA-Z0-9_-]{10,})")
 _VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{6,})")
 
 
-def channel_url_to_rss(channel_url: str) -> str | None:
-    m = _CHANNEL_ID_RE.search(channel_url)
-    if not m:
-        return None
-    channel_id = m.group(1)
-    return f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+def source_url_to_rss(source_url: str) -> str | None:
+    """
+    Supports:
+    - Channel RSS:  https://www.youtube.com/feeds/videos.xml?channel_id=UC...
+    - Playlist RSS: https://www.youtube.com/feeds/videos.xml?playlist_id=PL...
+    """
+    m = _CHANNEL_ID_RE.search(source_url)
+    if m:
+        return f"https://www.youtube.com/feeds/videos.xml?channel_id={m.group(1)}"
+
+    p = _PLAYLIST_ID_RE.search(source_url)
+    if p:
+        return f"https://www.youtube.com/feeds/videos.xml?playlist_id={p.group(1)}"
+
+    return None
 
 
 def fetch_latest_videos_from_rss(rss_url: str, limit: int = 10) -> list[Video]:

@@ -10,7 +10,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from youtube_summarizer import db
 from youtube_summarizer.config import load_channels, load_settings, repo_root
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
-from youtube_summarizer.youtube import channel_url_to_rss, fetch_latest_videos_from_rss, fetch_youtube_transcript
+from youtube_summarizer.youtube import fetch_latest_videos_from_rss, fetch_youtube_transcript, source_url_to_rss
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ def run_once(limit: int = 10) -> None:
             if remaining <= 0:
                 break
 
-            rss = channel_url_to_rss(ch.url)
+            rss = source_url_to_rss(ch.url)
             if not rss:
                 # Skip quietly; config format is designed to avoid API keys.
                 continue

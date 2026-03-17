@@ -1,3 +1,29 @@
+# YouTube sources to monitor (channels and/or playlists).
+#
+# Recommended:
+# - **Channel** URL with channel_id:
+#   https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx
+# - **Playlist** URL with playlist_id:
+#   https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx
+#
+# This lets us build RSS feeds without needing API keys.
+#
+# Each entry:
+# - name: friendly label (used in emails)
+# - url: channel OR playlist URL
+#
+# Notes:
+# - We intentionally prefer channel_id / playlist_id URLs because they work cleanly with RSS.
+# - “Handle” URLs like https://www.youtube.com/@somehandle may not work reliably here.
+
+channels = [
+  # --- TEMPLATES (copy/paste one of these blocks) ---
+  # { name = "Channel Name",  url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
+  # { name = "Playlist Name", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx" },
+
+  # --- YOUR SOURCES ---
+  # { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
+]
 # YouTube channels to monitor.
 #
 # Recommended format:
@@ -25,4 +51,13 @@ channels = [
 
   # --- OPTIONAL EXAMPLES (delete if you want) ---
   # { name = "Google Developers", url = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw" },
+]
+
+
+channels = [
+  { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/@NateBJones/" },
+  { name = "Alex Finn", url = "https://www.youtube.com/@AlexFinnOfficial" },
+
+
+  
 ]
