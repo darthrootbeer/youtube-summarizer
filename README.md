@@ -20,6 +20,34 @@ Monitors a list of YouTube channels and emails you a clean summary when a new vi
 brew install yt-dlp ffmpeg
 ```
 
+### 1b) (Optional) Free local summaries with Ollama
+
+If you want “free” summaries (no per-use token cost), you can run a local model on your Mac.
+
+#### Get your Mac specs (so we pick the right model)
+
+Run:
+
+```bash
+system_profiler SPHardwareDataType SPSoftwareDataType | sed -n '1,120p'
+```
+
+Look for **Chip** and **Memory**.
+
+#### Recommended Ollama model by RAM (Apple Silicon)
+
+- **8–16 GB RAM**: `qwen2.5:7b` (fastest / lightest)
+- **24–32 GB RAM**: `qwen2.5:14b` (recommended balance)
+- **64 GB+ RAM**: `qwen2.5:32b` (best local quality)
+
+#### Install + download model
+
+```bash
+brew install ollama
+ollama serve & sleep 2
+ollama pull qwen2.5:14b
+```
+
 ### 2) Python environment
 
 ```bash
