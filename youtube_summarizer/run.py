@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from youtube_summarizer import db
 from youtube_summarizer.config import load_channels, load_settings, repo_root
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
+from youtube_summarizer.summarizer import summarize_fallback, summarize_with_ollama
 from youtube_summarizer.youtube import fetch_latest_videos_from_rss, fetch_youtube_transcript, source_url_to_rss
 
 
@@ -54,7 +55,7 @@ def run_once(limit: int = 10) -> None:
                     continue
 
                 transcript = _get_transcript(v.video_id, v.url, settings.macwhisper_cmd, root)
-                summary = _summarize_placeholder(transcript.text)
+                summary = _summarize(transcript.text, settings.ollama_model)
 
                 subject = f"{settings.subject_prefix}{ch.name} — {v.title}"
                 html = template.render(
@@ -87,6 +88,18 @@ def run_once(limit: int = 10) -> None:
                     ),
                 )
                 remaining -= 1
+
+
+def _summarize(transcript: str, ollama_model: str | None) -> str:
+    if ollama_model:
+        try:
+            out = summarize_with_ollama(transcript=transcript, model=ollama_model)
+            if out:
+                return out
+        except Exception:
+            # If Ollama is temporarily unavailable, we still send *something*.
+            pass
+    return summarize_fallback(transcript)
 
 
 def _get_transcript(video_id: str, video_url: str, macwhisper_cmd: str | None, root: Path) -> TranscriptResult:
@@ -129,16 +142,6 @@ def _get_transcript(video_id: str, video_url: str, macwhisper_cmd: str | None, r
     if not transcript_text:
         raise RuntimeError("MacWhisper CLI returned empty transcript.")
     return TranscriptResult(text=transcript_text, source="macwhisper")
-
-
-def _summarize_placeholder(transcript: str) -> str:
-    t = " ".join(transcript.split())
-    if not t:
-        return "No transcript available."
-    snippet = t[:900]
-    if len(t) > len(snippet):
-        snippet += "…"
-    return snippet
 
 
 def _run(cmd: list[str]) -> None:

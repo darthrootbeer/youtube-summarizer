@@ -19,6 +19,7 @@ class Settings:
     gmail_app_password: str
     subject_prefix: str
     macwhisper_cmd: str | None
+    ollama_model: str | None
 
 
 def repo_root() -> Path:
@@ -46,6 +47,7 @@ def load_settings() -> Settings:
     gmail_app_password = os.environ.get("YTS_GMAIL_APP_PASSWORD", "").strip()
     subject_prefix = os.environ.get("YTS_SUBJECT_PREFIX", "[YT Summary] ").strip() or "[YT Summary] "
     macwhisper_cmd = os.environ.get("YTS_MACWHISPER_CMD", "").strip() or None
+    ollama_model = os.environ.get("YTS_OLLAMA_MODEL", "").strip() or None
 
     missing = []
     if not email_from:
@@ -66,5 +68,6 @@ def load_settings() -> Settings:
         gmail_app_password=gmail_app_password,
         subject_prefix=subject_prefix,
         macwhisper_cmd=macwhisper_cmd,
+        ollama_model=ollama_model,
     )
 
