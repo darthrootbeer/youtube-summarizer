@@ -8,9 +8,21 @@
 # - name: friendly label (used in emails)
 # - url: channel URL
 #
-# Example:
-# [[channels]]
-# name = "Example Channel"
-# url  = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw"
+# How to add a channel (recommended):
+#
+# 1) Open the YouTube channel in your browser
+# 2) Copy the URL that looks like:
+#    https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx
+# 3) Paste it below as `url`
+#
+# Notes:
+# - We intentionally use channel_id URLs because they work cleanly with RSS.
+# - "Handle" URLs like https://www.youtube.com/@somehandle may not work reliably here.
 
-channels = []
+channels = [
+  # --- TEMPLATE (copy/paste this block) ---
+  # { name = "Channel Name", url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
+
+  # --- OPTIONAL EXAMPLES (delete if you want) ---
+  # { name = "Google Developers", url = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw" },
+]
