@@ -85,36 +85,44 @@ For a detailed walkthrough, see `SETUP.md`.
 | `config/transcribe.md` | Transcript cleanup options (filler removal, paragraph breaks, Q&A detection, etc.) |
 | `.env` | Email settings, Ollama model, and other secrets (not committed) |
 
-### Per-feed prompt selection
+### How prompts are selected
 
-By default, all globally-enabled prompts run for every subscription. To override for a specific feed:
+Prompts work at two levels:
+
+**1. Global default (`enabled:` in the prompt file)**
+
+Each prompt file has an `enabled: true/false` field. When a feed has no explicit `prompts` list, all globally-enabled prompts run. Only the Summary prompt is on by default — everything else is opt-in.
+
+**2. Per-feed override (`prompts` in `channels.toml`)**
+
+Add a `prompts` list to any subscription or queue to run exactly those prompts for that feed, regardless of the global `enabled` setting:
 
 ```toml
 [[subscriptions]]
 name    = "My Channel"
 url     = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx"
-prompts = ["default", "glossary"]
+prompts = ["default", "executive_brief", "glossary"]
 ```
 
-Leaving `prompts` unset runs all enabled prompts.
+Omitting `prompts` falls back to the global defaults. Each channel or playlist gets its own independent list.
 
 ### Available prompts
 
-| Key | Label | Default |
+| Key | Label | On by default |
 |---|---|---|
-| `default` | Summary | on |
-| `executive_brief` | Executive brief | on |
-| `action_checklist` | Action checklist | on |
-| `decisions_options` | Key decisions + options | off |
-| `tldr_5_things` | TL;DR + things to remember | off |
-| `skeptics_review` | Skeptic's review | off |
-| `fact_vs_opinion` | Fact vs opinion separation | off |
-| `glossary` | Glossary (plain English) | off |
-| `outline_timestamps` | Structured outline with timestamps | off |
-| `quote_bank` | Quote bank + shareables | off |
-| `role_based` | Role-based versions (founder/PM/creator) | off |
+| `default` | Summary | yes |
+| `executive_brief` | Executive brief | no |
+| `action_checklist` | Action checklist | no |
+| `decisions_options` | Key decisions + options | no |
+| `tldr_5_things` | TL;DR + things to remember | no |
+| `skeptics_review` | Skeptic's review | no |
+| `fact_vs_opinion` | Fact vs opinion separation | no |
+| `glossary` | Glossary (plain English) | no |
+| `outline_timestamps` | Structured outline with timestamps | no |
+| `quote_bank` | Quote bank + shareables | no |
+| `role_based` | Role-based versions (founder/PM/creator) | no |
 
-Enable or disable them by editing `enabled: true/false` in the prompt file, or use `manage.sh` to set per-feed overrides.
+To change the global default for a prompt, edit `enabled:` in its file under `config/prompts/`. To customise per feed, use the `prompts` list in `channels.toml`.
 
 ---
 

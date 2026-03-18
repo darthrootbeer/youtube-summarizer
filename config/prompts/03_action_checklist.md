@@ -1,6 +1,6 @@
 # action_checklist
 
-enabled: true
+enabled: false
 label: Action checklist
 
 ## short

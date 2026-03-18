@@ -1,6 +1,6 @@
 # executive_brief
 
-enabled: true
+enabled: false
 label: Executive brief (5-minute read)
 
 ## short

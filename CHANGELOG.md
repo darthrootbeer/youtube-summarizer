@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-03-18
+
+### Changed
+
+- Only the `default` (Summary) prompt is enabled globally by default.
+  `executive_brief` and `action_checklist` are now `enabled: false` — opt in per feed via `prompts` in `channels.toml`.
+- README: clarified two-level prompt selection (global default vs per-feed override).
+
+---
+
 ## [1.0.0] — 2026-03-18
 
 First public release.
@@ -36,4 +46,5 @@ First public release.
 ---
 
 <!-- Links -->
+[1.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/darthrootbeer/youtube-summarizer/releases/tag/v1.0.0
