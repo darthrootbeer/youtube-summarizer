@@ -195,13 +195,24 @@ cmd_subscribe() {
   ok "Subscribed: $name"
 }
 
-# ── 2. add transcribe queue ───────────────────────────────────────────────────
+# ── 2. manage transcribe queue ────────────────────────────────────────────────
 cmd_add_transcribe_queue() {
-  header "Add Transcribe Queue"
+  header "Manage Transcribe Queue"
+
+  # Show current config if set
+  local current_url current_name
+  current_url=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d.get('url',''))" 2>/dev/null || true)
+  current_name=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d.get('name',''))" 2>/dev/null || true)
+  if [ -n "$current_url" ]; then
+    section "Current transcribe queue:"
+    gum style --foreground "$DIM" "  Name: $current_name"
+    gum style --foreground "$DIM" "  URL:  $current_url"
+    echo ""
+  fi
 
   section "YouTube playlist URL (from your account):"
   local url
-  url=$(gum input --placeholder "https://www.youtube.com/playlist?list=PL..." --width 68)
+  url=$(gum input --value "${current_url}" --placeholder "https://www.youtube.com/playlist?list=PL..." --width 68)
   [ -z "$url" ] && { warn "Cancelled."; return; }
 
   local name
@@ -278,13 +289,24 @@ for o in json.load(sys.stdin):
   ok "Transcribe queue set: $name"
 }
 
-# ── 3. add summarize queue ────────────────────────────────────────────────────
+# ── 3. manage summarize queue ─────────────────────────────────────────────────
 cmd_add_summarize_queue() {
-  header "Add Summarize Queue"
+  header "Manage Summarize Queue"
+
+  # Show current config if set
+  local current_url current_name
+  current_url=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d.get('url',''))" 2>/dev/null || true)
+  current_name=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d.get('name',''))" 2>/dev/null || true)
+  if [ -n "$current_url" ]; then
+    section "Current summarize queue:"
+    gum style --foreground "$DIM" "  Name: $current_name"
+    gum style --foreground "$DIM" "  URL:  $current_url"
+    echo ""
+  fi
 
   section "YouTube playlist URL (from your account):"
   local url
-  url=$(gum input --placeholder "https://www.youtube.com/playlist?list=PL..." --width 68)
+  url=$(gum input --value "${current_url}" --placeholder "https://www.youtube.com/playlist?list=PL..." --width 68)
   [ -z "$url" ] && { warn "Cancelled."; return; }
 
   local name
