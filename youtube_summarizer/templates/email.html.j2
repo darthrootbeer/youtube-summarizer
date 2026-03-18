@@ -19,6 +19,16 @@
           </div>
         </div>
 
+        <!-- Thumbnail -->
+        {% if thumbnail_url %}
+        <a href="{{ video_url }}" style="display:block; line-height:0;">
+          <img src="{{ thumbnail_url }}"
+               alt="{{ video_title }}"
+               width="100%"
+               style="display:block; border:0; max-height:360px; object-fit:cover;" />
+        </a>
+        {% endif %}
+
         <!-- Video meta -->
         <div style="padding:12px 20px; background:#f9fafc; border-bottom:1px solid #e7e9f2;">
           <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:13px; color:#3b3f55; line-height:1.7;">
