@@ -1,14 +1,9 @@
-## Prompt library
+# LEGACY FALLBACK — do not edit prompts here.
 #
-# Define one or more prompt templates for summarization.
-# Channels can pick a prompt by setting `prompt = "some_key"` in `config/channels.toml`.
+# This file is only used as a last-resort fallback if `config/process.md` is missing.
 #
-# Required:
-# - `default`: used when a channel does not specify a prompt key, or if the key is missing.
-#
-# Notes:
-# - The `{transcript}` placeholder is required.
-#
+# To edit summarize prompts, use:  config/process.md
+# To edit transcribe options/prompt, use:  config/transcribe.md
 
 [prompts]
 
@@ -17,7 +12,7 @@ Write a short, skimmable summary for a non-technical reader.
 
 Hard rules:
 - 170–230 words total (aim for ~200)
-- Do not mention the speaker, presenter, or “this video” — just summarize the ideas as standalone statements.
+- Do not mention the speaker, presenter, or "this video" — just summarize the ideas as standalone statements.
 - No markdown headers (no "###"), no numbered lists, no "Conclusion"
 - Do not repeat sections or restate the same idea twice
 - Exactly ONE "Key takeaways" section with exactly 3 bullets (use "- " bullets)
@@ -36,4 +31,3 @@ Transcript:
 {transcript}
 \"\"\"
 """
-

@@ -45,7 +45,7 @@ Transcript:
 
 ### executive_brief
 
-enabled: true  
+enabled: true
 label: Executive brief (5-minute read)
 
 ```prompt
@@ -70,7 +70,7 @@ Transcript:
 
 ### action_checklist
 
-enabled: true  
+enabled: true
 label: Action checklist
 
 ```prompt

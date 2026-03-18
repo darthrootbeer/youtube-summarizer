@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from html import escape
 from pathlib import Path
 from uuid import uuid4
@@ -14,7 +17,15 @@ from markupsafe import Markup
 import re
 
 from youtube_summarizer import db
-from youtube_summarizer.config import load_channels, load_process_prompts, load_settings, load_transcribe_prompts, repo_root
+from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped
+from youtube_summarizer.config import (
+    load_channels,
+    load_process_prompts,
+    load_settings,
+    load_transcribe_options,
+    load_transcribe_prompts,
+    repo_root,
+)
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
 from youtube_summarizer.summarizer import summarize_fallback, summarize_with_ollama
 from youtube_summarizer.youtube import (
@@ -47,13 +58,13 @@ class BetaStats:
     total_ms: int
 
 
-def run_once(limit: int = 10) -> None:
+def run_once(limit: int = 10) -> int:
     _load_dotenv_if_present(repo_root() / ".env")
 
     settings = load_settings()
     channels = load_channels()
     process_prompts = load_process_prompts()
-    enabled_prompts = [p for p in process_prompts if p.enabled]
+    all_enabled_prompts = [p for p in process_prompts if p.enabled]
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
@@ -65,13 +76,14 @@ def run_once(limit: int = 10) -> None:
     )
     template = env.get_template("email.html.j2")
 
+    processed = 0
     with db.connect(root) as conn:
         remaining = max(1, limit)
 
         for ch in channels:
             if remaining <= 0:
                 break
-            mode = (ch.mode or "summarize").strip().lower()
+            mode = ch.mode
             mode_filter = os.environ.get("YTS_MODE_FILTER", "").strip().lower()
             if mode_filter and mode != mode_filter:
                 continue
@@ -94,10 +106,58 @@ def run_once(limit: int = 10) -> None:
             t_rss = time.perf_counter()
             videos = fetch_latest_videos_from_rss(rss, limit=30)
             rss_fetch_ms = _ms_since(t_rss)
+            if not videos:
+                # Some playlists don't reliably expose items via RSS (even when unlisted).
+                # Fallback to yt-dlp to enumerate playlist items (best-effort).
+                videos = _fetch_videos_via_ytdlp_playlist(
+                    playlist_url=ch.url,
+                    limit=30,
+                    ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
+                    ytdlp_cookies_file=settings.ytdlp_cookies_file,
+                )
+            # Bootstrap: on first encounter of a subscription, mark all current RSS videos as seen
+            # without processing them. This prevents flooding on newly-added channels.
+            # Queue playlists are NOT bootstrapped — they are always drained to empty.
+            if ch.source_type == "subscription" and not has_bootstrapped(conn, ch.url):
+                for v in videos:
+                    seen_id = v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}"
+                    if not db.has_seen(conn, seen_id):
+                        db.mark_seen(
+                            conn,
+                            db.SeenVideo(
+                                video_id=seen_id,
+                                video_url=v.url,
+                                channel_name=effective_channel_name,
+                                video_title=v.title,
+                                published_at=v.published_at,
+                            ),
+                        )
+                mark_bootstrapped(conn, ch.url)
+                print(f"[bootstrap] {effective_channel_name}: marked {len(videos)} existing video(s) as seen, will process new videos going forward.")
+                continue
+
+            # Determine which prompts to run for this channel.
+            # If ch.prompt is set, filter to that one key only; otherwise use all enabled.
+            if ch.prompt:
+                channel_prompts = [p for p in all_enabled_prompts if p.key == ch.prompt]
+                if not channel_prompts:
+                    channel_prompts = all_enabled_prompts
+            else:
+                channel_prompts = all_enabled_prompts
+
+            # Source label for the email (human-readable type tag).
+            source_label = {
+                "subscription": "Subscription",
+                "summarize_queue": "Summarize Queue",
+                "transcribe_queue": "Transcribe Queue",
+            }.get(ch.source_type, ch.source_type)
+
             for v in videos:
                 if remaining <= 0:
                     break
-                if db.has_seen(conn, v.video_id):
+                # Allow the same video to be processed separately for summarize vs transcribe queues.
+                seen_id = v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}"
+                if db.has_seen(conn, seen_id):
                     continue
 
                 t_total = time.perf_counter()
@@ -134,10 +194,12 @@ def run_once(limit: int = 10) -> None:
                         }
                     )
                 else:
-                    enabled_prompt_keys = [p.key for p in enabled_prompts]
-                    for p in enabled_prompts:
+                    enabled_prompt_keys = [p.key for p in channel_prompts]
+                    for p in channel_prompts:
                         t_sum = time.perf_counter()
                         out = _summarize(transcript.text, settings.ollama_model, p.template)
+                        if p.key == "default":
+                            out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model)
                         per_prompt_s.append(f"{p.key}={_fmt_ms(_ms_since(t_sum))}")
                         sections.append(
                             {
@@ -149,7 +211,12 @@ def run_once(limit: int = 10) -> None:
                         )
                 summarize_ms = _ms_since(t_sum_total)
 
-                subject = f"{settings.subject_prefix}{effective_channel_name} — {v.title}"
+                subject_tag = {
+                    "subscription": "[SUB]",
+                    "summarize_queue": "[SUMMARY]",
+                    "transcribe_queue": "[TRANSCRIPTION]",
+                }.get(ch.source_type, "")
+                subject = f"{settings.subject_prefix}{subject_tag} {effective_channel_name} — {v.title}"
                 beta_stats = BetaStats(
                     video_id=v.video_id,
                     summary_id=summary_id,
@@ -189,18 +256,22 @@ def run_once(limit: int = 10) -> None:
                     "total_to_send_s": None,
                     "qa_notes": "multi-prompt email enabled (beta)",
                 }
-                # Render twice so the email itself can include accurate `email_render_s`.
-                t_render = time.perf_counter()
-                html = template.render(
+                published_at_display = _fmt_published_at(v.published_at)
+                render_ctx = dict(
                     subject=subject,
-                    channel_name=effective_channel_name,
+                    source_label=source_label,
+                    source_name=effective_channel_name,
                     video_title=v.title,
                     video_url=v.url,
                     sections=sections,
                     transcript_source=transcript.source,
                     published_at=v.published_at,
+                    published_at_display=published_at_display,
                     beta_stats=beta_stats_view,
                 )
+                # Render twice so the email itself can include accurate `email_render_s`.
+                t_render = time.perf_counter()
+                html = template.render(**render_ctx)
                 email_render_ms = _ms_since(t_render)
 
                 beta_stats = BetaStats(
@@ -208,17 +279,9 @@ def run_once(limit: int = 10) -> None:
                 )
                 beta_stats_view["email_render_s"] = _fmt_seconds(beta_stats.email_render_ms)
                 beta_stats_view["total_before_send_s"] = _fmt_seconds(beta_stats.total_ms)
+                render_ctx["beta_stats"] = beta_stats_view
                 # Re-render with updated stats (small overhead, but removes "n/a" during beta).
-                html = template.render(
-                    subject=subject,
-                    channel_name=effective_channel_name,
-                    video_title=v.title,
-                    video_url=v.url,
-                    sections=sections,
-                    transcript_source=transcript.source,
-                    published_at=v.published_at,
-                    beta_stats=beta_stats_view,
-                )
+                html = template.render(**render_ctx)
                 # Persist the summary + stats after we know render/total timings.
                 _write_summary_artifact(
                     root=root,
@@ -268,7 +331,7 @@ def run_once(limit: int = 10) -> None:
                     db.mark_seen(
                         conn,
                         db.SeenVideo(
-                            video_id=v.video_id,
+                            video_id=seen_id,
                             video_url=v.url,
                             channel_name=effective_channel_name,
                             video_title=v.title,
@@ -276,6 +339,24 @@ def run_once(limit: int = 10) -> None:
                         ),
                     )
                 remaining -= 1
+                processed += 1
+
+    return processed
+
+
+def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
+    """
+    Poll continuously:
+    - Process anything new from configured sources (channels + playlists)
+    - If nothing new is found, sleep until the next poll
+    """
+    while True:
+        n = run_once(limit=limit)
+        if n <= 0:
+            time.sleep(max(5, int(poll_seconds)))
+        else:
+            # If we processed something, loop again immediately to catch up quickly.
+            continue
 
 
 def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
@@ -430,6 +511,13 @@ def _run(cmd: list[str]) -> None:
         subprocess.run(cmd, check=True, env=_child_env())
     except subprocess.CalledProcessError as e:
         if cmd and cmd[0] == "yt-dlp":
+            msg = (getattr(e, "stderr", None) or "") if hasattr(e, "stderr") else ""
+            # If ffprobe/ffmpeg is missing, yt-dlp extraction can fail even when cookies are fine.
+            if "ffprobe" in msg.lower() or "ffmpeg" in msg.lower():
+                raise RuntimeError(
+                    "Audio processing failed because ffmpeg/ffprobe was not found. "
+                    "Fix: install ffmpeg (brew install ffmpeg) and ensure Homebrew is on PATH."
+                ) from e
             raise RuntimeError(
                 "Audio download failed. YouTube may be blocking automated downloads on this network. "
                 "Fix: set YTS_YTDLP_COOKIES_FROM_BROWSER (e.g. 'chrome' or 'safari') "
@@ -458,8 +546,34 @@ def _child_env() -> dict[str, str]:
     # Don't `.resolve()` here: venv python is often a symlink to the base interpreter,
     # and resolving would point us at the Homebrew python bin instead of `.venv/bin`.
     venv_bin = str(Path(sys.executable).parent)
-    env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
+    base_path = env.get("PATH", "")
+    # launchd often provides a minimal PATH; add common Homebrew locations so tools like
+    # `yt-dlp`, `ffmpeg`, and `ffprobe` are discoverable.
+    brew_prefixes = ["/opt/homebrew/bin", "/opt/homebrew/sbin"]
+    for p in reversed(brew_prefixes):
+        if p and p not in base_path:
+            base_path = f"{p}{os.pathsep}{base_path}" if base_path else p
+    env["PATH"] = f"{venv_bin}{os.pathsep}{base_path}"
     return env
+
+
+def _fmt_published_at(published_at: str) -> str:
+    """Parse and format a video's published date for display in emails."""
+    if not published_at:
+        return ""
+    # Try RFC 2822 (feedparser default: "Thu, 13 Mar 2025 14:30:00 +0000")
+    try:
+        dt = parsedate_to_datetime(published_at).astimezone(timezone.utc)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+    except Exception:
+        pass
+    # Try ISO 8601
+    try:
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+    except Exception:
+        pass
+    return published_at
 
 
 def _ms_since(t0: float) -> int:
@@ -808,24 +922,210 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
     # Simple, accurate reflow:
     # - remove blank-line noise
     # - collapse runs of whitespace
-    # - add paragraph breaks roughly every ~800–1200 characters on sentence boundaries
+    # - add paragraph breaks on sentence boundaries (without changing wording)
+    opts = load_transcribe_options()
     raw = " ".join([ln.strip() for ln in t.splitlines() if ln.strip()]).strip()
+
+    if opts.get("strip_stage_directions", False):
+        raw = re.sub(
+            r"\[(?:music|applause|laughter|silence|noise|intro|outro|advertisement)[^\]]*\]",
+            "",
+            raw,
+            flags=re.I,
+        )
+        raw = re.sub(r"\s{2,}", " ", raw).strip()
+
+    if opts.get("remove_fillers", True):
+        # Remove standalone filler tokens.
+        raw = re.sub(r"(?i)\b(um+|uh+|er+|ah+|eh+|hmm+)\b", "", raw)
+        # Remove obvious double-word stutters: "the the" -> "the"
+        raw = re.sub(r"(?i)\b(\w+)(\s+\1\b)+", r"\1", raw)
+        raw = re.sub(r"\s{2,}", " ", raw).strip()
+
     if len(raw) <= 1200:
         return raw
 
+    target = 1000 if opts.get("robust_sentence_breaks", False) else 1400
     paras: list[str] = []
     buf = ""
     for part in re.split(r"(?<=[.!?])\s+", raw):
         if not part:
             continue
-        if buf and len(buf) + 1 + len(part) > 1000:
+        if buf and len(buf) + 1 + len(part) > target:
             paras.append(buf.strip())
             buf = part
         else:
             buf = (buf + " " + part).strip()
     if buf.strip():
         paras.append(buf.strip())
-    return "\n\n".join(paras).strip()
+    out = "\n\n".join(paras).strip()
+
+    if opts.get("questions_own_paragraph", False):
+        # Put questions on their own paragraph (blank line before & after).
+        out = re.sub(r"(?m)(^.*\?\s*$)", r"\n\1\n", out)
+        out = re.sub(r"\n{3,}", "\n\n", out).strip()
+
+    return out
+
+
+def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | None) -> str:
+    """
+    Default summary must contain exactly 3 "- " bullets under a "Key takeaways" line.
+    If the model forgets, we repair it.
+    """
+    s = (summary or "").strip()
+    if not s:
+        return s
+
+    if _has_three_key_takeaway_bullets(s):
+        return _truncate_key_takeaways_to_three(s)
+
+    if not ollama_model:
+        repaired = _truncate_key_takeaways_to_three(s)
+        if _has_three_key_takeaway_bullets(repaired):
+            return repaired
+        core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
+        return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
+
+    prompt = f"""Fix the formatting of this summary so it follows the rules exactly.
+
+Rules:
+- 170–230 words total (aim for ~200)
+- Do not mention the speaker, presenter, or “this video”.
+- No markdown headers, no numbered lists, no "Conclusion"
+- Exactly ONE "Key takeaways" line followed by exactly 3 bullets
+- Bullets must start with "- "
+- Do not repeat information
+
+Transcript:
+\"\"\"
+{transcript}
+\"\"\"
+
+Current summary:
+\"\"\"
+{s}
+\"\"\"
+"""
+    try:
+        res = subprocess.run(
+            ["ollama", "run", ollama_model],
+            input=prompt,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+            timeout=120,
+        )
+        fixed = (res.stdout or "").strip() or s
+        fixed = _truncate_key_takeaways_to_three(fixed)
+        return fixed
+    except Exception:
+        return _truncate_key_takeaways_to_three(s)
+
+
+def _has_three_key_takeaway_bullets(text: str) -> bool:
+    m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
+    if not m:
+        return False
+    after = text[m.end() :].strip("\n")
+    bullets = []
+    for ln in after.splitlines():
+        line = ln.strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            bullets.append(line)
+            continue
+        if bullets:
+            break
+    return len(bullets) >= 3
+
+
+def _truncate_key_takeaways_to_three(text: str) -> str:
+    m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
+    if not m:
+        return text.strip()
+    before = text[: m.start()].rstrip()
+    after = text[m.end() :].lstrip()
+    bullets = []
+    for ln in after.splitlines():
+        line = ln.strip()
+        if line.startswith("- "):
+            bullets.append(line)
+            continue
+        if bullets:
+            break
+    bullets = bullets[:3]
+    return "\n\n".join([before, "Key takeaways", "\n".join(bullets)]).strip()
+
+
+def _fetch_videos_via_ytdlp_playlist(
+    *,
+    playlist_url: str,
+    limit: int,
+    ytdlp_cookies_from_browser: str | None,
+    ytdlp_cookies_file: str | None,
+) -> list[object]:
+    """
+    Best-effort playlist enumeration using yt-dlp (used when RSS is empty).
+
+    Returns objects shaped like `youtube_summarizer.youtube.Video` without importing it here:
+    { video_id, url, title, published_at }.
+    """
+    cookies_args: list[str] = []
+    if ytdlp_cookies_file:
+        cookies_args = ["--cookies", ytdlp_cookies_file]
+    elif ytdlp_cookies_from_browser:
+        cookies_args = ["--cookies-from-browser", ytdlp_cookies_from_browser]
+
+    try:
+        res = subprocess.run(
+            [
+                "yt-dlp",
+                "--flat-playlist",
+                "--dump-single-json",
+                *cookies_args,
+                playlist_url,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_child_env(),
+            timeout=60,
+        )
+    except Exception:
+        return []
+
+    try:
+        data = json.loads(res.stdout or "{}")
+    except Exception:
+        return []
+
+    entries = data.get("entries") or []
+    out = []
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    for e in entries:
+        if len(out) >= max(0, limit):
+            break
+        vid = str((e or {}).get("id") or "").strip()
+        title = str((e or {}).get("title") or "").strip() or "Untitled"
+        if not vid:
+            continue
+        out.append(
+            type(
+                "Video",
+                (),
+                {
+                    "video_id": vid,
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "title": title,
+                    "published_at": now_iso,
+                },
+            )()
+        )
+    return out
 
 
 def _load_dotenv_if_present(path: Path) -> None:

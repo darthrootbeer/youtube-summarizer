@@ -11,8 +11,9 @@ from pathlib import Path
 class Channel:
     name: str | None
     url: str
-    prompt: str | None = None
-    mode: str | None = None  # "summarize" (default) | "transcribe"
+    mode: str  # "summarize" | "transcribe"
+    source_type: str  # "subscription" | "summarize_queue" | "transcribe_queue"
+    prompt: str | None = None  # if set, only this prompt key runs (else all enabled prompts)
 
 
 @dataclass(frozen=True)
@@ -45,16 +46,33 @@ def repo_root() -> Path:
 def load_channels(path: Path | None = None) -> list[Channel]:
     cfg_path = path or (repo_root() / "config" / "channels.toml")
     raw = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
-    channels = raw.get("channels", [])
     out: list[Channel] = []
-    for item in channels:
-        name = str(item.get("name", "")).strip() or None
+
+    # Subscriptions — new-content-only channels/playlists (summarize mode)
+    for item in raw.get("subscriptions", []):
         url = str(item.get("url", "")).strip()
-        prompt = str(item.get("prompt", "")).strip() or None
-        mode = str(item.get("mode", "")).strip() or None
         if not url:
             continue
-        out.append(Channel(name=name, url=url, prompt=prompt, mode=mode))
+        name = str(item.get("name", "")).strip() or None
+        out.append(Channel(name=name, url=url, mode="summarize", source_type="subscription"))
+
+    # Summarize queue — personal playlist, drain to empty (summarize mode)
+    sq = raw.get("summarize_queue")
+    if sq:
+        url = str(sq.get("url", "")).strip()
+        if url:
+            name = str(sq.get("name", "")).strip() or None
+            prompt = str(sq.get("prompt", "")).strip() or None
+            out.append(Channel(name=name, url=url, mode="summarize", source_type="summarize_queue", prompt=prompt))
+
+    # Transcribe queue — personal playlist, drain to empty (transcribe mode)
+    tq = raw.get("transcribe_queue")
+    if tq:
+        url = str(tq.get("url", "")).strip()
+        if url:
+            name = str(tq.get("name", "")).strip() or None
+            out.append(Channel(name=name, url=url, mode="transcribe", source_type="transcribe_queue"))
+
     return out
 
 
@@ -154,6 +172,24 @@ def load_transcribe_prompts(path: Path | None = None) -> list[ProcessPrompt]:
         out.append(ProcessPrompt(key=key, label=label, enabled=enabled, template=template))
 
     return out
+
+
+def load_transcribe_options(path: Path | None = None) -> dict[str, bool]:
+    """
+    Parse boolean options from `config/transcribe.md`.
+    Format: `key: true|false` anywhere in the file (first match wins).
+    """
+    cfg_path = path or (repo_root() / "config" / "transcribe.md")
+    if not cfg_path.exists():
+        return {}
+    raw = cfg_path.read_text(encoding="utf-8")
+    opts: dict[str, bool] = {}
+    for m in re.finditer(r"(?mi)^\s*([a-zA-Z0-9_]+)\s*:\s*(true|false)\s*$", raw):
+        k = m.group(1).strip()
+        v = m.group(2).strip().lower() == "true"
+        if k not in opts:
+            opts[k] = v
+    return opts
 
 
 def load_settings() -> Settings:

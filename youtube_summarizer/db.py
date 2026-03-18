@@ -41,12 +41,35 @@ def _migrate(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bootstrapped_channels (
+          channel_url TEXT PRIMARY KEY,
+          bootstrapped_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        """
+    )
     conn.commit()
 
 
 def has_seen(conn: sqlite3.Connection, video_id: str) -> bool:
     row = conn.execute("SELECT 1 FROM seen_videos WHERE video_id = ? LIMIT 1", (video_id,)).fetchone()
     return row is not None
+
+
+def has_bootstrapped(conn: sqlite3.Connection, channel_url: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM bootstrapped_channels WHERE channel_url = ? LIMIT 1", (channel_url,)
+    ).fetchone()
+    return row is not None
+
+
+def mark_bootstrapped(conn: sqlite3.Connection, channel_url: str) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO bootstrapped_channels (channel_url) VALUES (?)",
+        (channel_url,),
+    )
+    conn.commit()
 
 
 def mark_seen(conn: sqlite3.Connection, video: SeenVideo) -> None:
