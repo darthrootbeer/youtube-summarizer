@@ -29,7 +29,7 @@
               <div style="font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#6b6f85; margin-bottom:8px;">
                 Summary
               </div>
-              <div style="white-space:pre-wrap;">{{ summary }}</div>
+              <div>{{ summary_html }}</div>
             </div>
 
             <div style="font-size:12px; color:#6b6f85;">
@@ -38,6 +38,29 @@
               · Published: {{ published_at }}
               {% endif %}
             </div>
+
+            {% if beta_stats %}
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid #eef0f7; font-size:12px; color:#6b6f85;">
+              <div style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#6b6f85; margin-bottom:6px;">
+                Beta stats
+              </div>
+              <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:pre-wrap; line-height:1.45;">
+video_id: {{ beta_stats.video_id }}
+transcript_source: {{ beta_stats.transcript_source }}
+prompt: {{ beta_stats.prompt_key }}
+ollama_model: {{ beta_stats.ollama_model or "n/a" }}
+rss_fetch_s: {{ beta_stats.rss_fetch_s or "n/a" }}
+media_size_mb: {{ beta_stats.media_size_mb or "n/a" }}
+download_media_s: {{ beta_stats.download_media_s or "n/a" }}
+transcribe_s: {{ beta_stats.transcribe_s or "n/a" }}
+summarize_s: {{ beta_stats.summarize_s or "n/a" }}
+email_render_s: {{ beta_stats.email_render_s or "n/a" }}
+email_send_s: {{ beta_stats.email_send_s or "n/a" }}
+total_before_send_s: {{ beta_stats.total_before_send_s or "n/a" }}
+total_to_send_s: {{ beta_stats.total_to_send_s or "n/a" }}
+              </div>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>

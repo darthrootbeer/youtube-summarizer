@@ -7,10 +7,17 @@ Monitors a list of YouTube channels and emails you a clean summary when a new vi
 - Check each channel’s **RSS feed** for newly posted videos.
 - For each new video:
   - Try to fetch the **YouTube transcript**.
-  - If there’s no transcript, **download audio** and transcribe locally (MacWhisper CLI).
+  - If there’s no transcript, **download audio** and transcribe locally (Parakeet on Apple Silicon by default).
   - Create a summary (prompt-driven; supports per-channel prompt selection).
   - Send a well-formatted email with the summary + a link to the video.
 - Track what’s already been processed in a local **SQLite** database so you don’t get duplicates.
+
+## Do I need API keys?
+
+- **YouTube**: **No API keys needed.** This project uses public YouTube RSS feeds.
+- **Gmail**: No “API key”, but you **do** need a **Gmail App Password** (required for sending email via SMTP).
+- **Ollama**: No keys needed (it runs locally on your Mac).
+- **Hugging Face (optional)**: If you use Parakeet transcription, a free Hugging Face account/token can help avoid rate limits when downloading models.
 
 ## Install (macOS)
 
@@ -19,6 +26,16 @@ Monitors a list of YouTube channels and emails you a clean summary when a new vi
 ```bash
 brew install yt-dlp ffmpeg
 ```
+
+### 1a) Gmail App Password (required for sending email)
+
+You’ll generate this in your Google Account. It’s a special password that lets an app send email without giving it your real Gmail password.
+
+- Go to Google Account → Security: `https://myaccount.google.com/security`
+- Turn on **2‑Step Verification** (if it’s not already on)
+- Go to **App passwords**: `https://myaccount.google.com/apppasswords`
+- Create one for “Mail” (or “Other”), copy the 16‑character password
+- Paste it into `YTS_GMAIL_APP_PASSWORD` in your `.env`
 
 ### 1b) (Optional) Free local summaries with Ollama
 
@@ -62,6 +79,18 @@ pip install -r requirements.txt
 - Optional: edit `config/prompts.toml` (and/or set `prompt = "..."` per channel)
 - Copy `.env.example` to `.env` and fill in values (especially Gmail app password)
 
+### 3b) (Optional) Avoid Hugging Face download rate limits
+
+If Parakeet prints a warning about unauthenticated Hugging Face requests, you can create a free token:
+
+- Create a token: `https://huggingface.co/settings/tokens`
+- Then run your job with `HF_TOKEN` set (example):
+
+```bash
+export HF_TOKEN="your_token_here"
+python -m youtube_summarizer run --limit 1
+```
+
 ## Run
 
 Run once (manual):
@@ -70,6 +99,10 @@ Run once (manual):
 source .venv/bin/activate
 python -m youtube_summarizer run
 ```
+
+## First-run checklist (recommended)
+
+If you want a clean “follow this once and you’re done” setup guide, see `SETUP.md`.
 
 ## Scheduler (automatic runs)
 

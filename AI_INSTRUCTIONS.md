@@ -12,3 +12,9 @@ When changing email formatting, optimize for:
 - Clean typography
 - Minimal noise
 
+When changing prompts / summarization behavior:
+
+- Prompt templates live in `config/prompts.toml` under `[prompts]`.
+- Channels can select a prompt via `prompt = "some_key"` in `config/channels.toml`.
+- Prompts must include `{transcript}`.
+
