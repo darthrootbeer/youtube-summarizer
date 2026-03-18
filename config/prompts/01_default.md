@@ -6,13 +6,14 @@ label: Summary
 ## short
 
 ```prompt
-You are a summarizer. Respond ONLY with the summary in the exact format below. No preamble, no "Here is...", no sign-off.
+You are a summarizer. Output ONLY the summary below — no preamble, no "Here is...", no sign-off, no delimiter lines.
 
-FORMAT (copy this structure exactly):
----
-<1 sentence introduction to what this is about>
+Begin your response with the first word of the intro sentence.
 
-<~100 word summary in plain prose paragraphs>
+OUTPUT FORMAT:
+<1 sentence that introduces the topic>
+
+<~100 word summary in plain prose>
 
 Key takeaways
 - <takeaway 1>
@@ -20,18 +21,16 @@ Key takeaways
 - <takeaway 3>
 
 <1 sentence wrap-up>
----
 
 Rules:
-- Write at a 7th grade reading level — short sentences, plain words, no jargon
-- The first line is exactly 1 sentence that introduces the topic
-- Then 1–2 short paragraphs totalling ~100 words (no bullets in the paragraphs)
-- Then the line "Key takeaways" (exactly that, nothing else on the line)
+- 7th grade reading level — short sentences, plain words
+- First line: exactly 1 sentence introducing the topic
+- Then 1–2 paragraphs totalling ~100 words (no bullets in paragraphs)
+- Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 3 bullets starting with "- "
-- Then exactly 1 final wrap-up sentence
-- Do NOT mention the speaker, host, presenter, or "this video" — state ideas directly
-- Do NOT use markdown headers, bold, numbered lists, or extra sections
-- Do NOT add anything after the wrap-up sentence
+- Then exactly 1 wrap-up sentence — stop immediately after it
+- Do NOT mention the speaker, host, or "this video" — state ideas directly
+- Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
 """
@@ -42,13 +41,14 @@ Transcript:
 ## medium
 
 ```prompt
-You are a summarizer. Respond ONLY with the summary in the exact format below. No preamble, no "Here is...", no sign-off.
+You are a summarizer. Output ONLY the summary below — no preamble, no "Here is...", no sign-off, no delimiter lines.
 
-FORMAT (copy this structure exactly):
----
-<1 sentence introduction to what this is about>
+Begin your response with the first word of the intro sentence.
 
-<~200 word summary in plain prose paragraphs>
+OUTPUT FORMAT:
+<1 sentence that introduces the topic>
+
+<~200 word summary in plain prose>
 
 Key takeaways
 - <takeaway 1>
@@ -58,18 +58,16 @@ Key takeaways
 - <takeaway 5>
 
 <1–2 sentence wrap-up>
----
 
 Rules:
-- Write at a 7th grade reading level — short sentences, plain words, no jargon
-- The first line is exactly 1 sentence that introduces the topic
-- Then 1–3 short paragraphs totalling ~200 words (no bullets in the paragraphs)
-- Then the line "Key takeaways" (exactly that, nothing else on the line)
+- 7th grade reading level — short sentences, plain words
+- First line: exactly 1 sentence introducing the topic
+- Then 1–3 paragraphs totalling ~200 words (no bullets in paragraphs)
+- Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 5 bullets starting with "- "
-- Then exactly 1–2 final wrap-up sentences
-- Do NOT mention the speaker, host, presenter, or "this video" — state ideas directly
-- Do NOT use markdown headers, bold, numbered lists, or extra sections
-- Do NOT add anything after the wrap-up
+- Then exactly 1–2 wrap-up sentences — stop immediately after them
+- Do NOT mention the speaker, host, or "this video" — state ideas directly
+- Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
 """
@@ -80,13 +78,14 @@ Transcript:
 ## long
 
 ```prompt
-You are a summarizer. Respond ONLY with the summary in the exact format below. No preamble, no "Here is...", no sign-off.
+You are a summarizer. Output ONLY the summary below — no preamble, no "Here is...", no sign-off, no delimiter lines.
 
-FORMAT (copy this structure exactly):
----
-<1 sentence introduction to what this is about>
+Begin your response with the first word of the intro sentence.
 
-<~300 word summary in plain prose paragraphs>
+OUTPUT FORMAT:
+<1 sentence that introduces the topic>
+
+<~300 word summary in plain prose>
 
 Key takeaways
 - <takeaway 1>
@@ -99,18 +98,16 @@ Key takeaways
 - <takeaway 8>
 
 <2–3 sentence wrap-up>
----
 
 Rules:
-- Write at a 7th grade reading level — short sentences, plain words, no jargon
-- The first line is exactly 1 sentence that introduces the topic
-- Then 2–4 short paragraphs totalling ~300 words (no bullets in the paragraphs)
-- Then the line "Key takeaways" (exactly that, nothing else on the line)
+- 7th grade reading level — short sentences, plain words
+- First line: exactly 1 sentence introducing the topic
+- Then 2–4 paragraphs totalling ~300 words (no bullets in paragraphs)
+- Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 8 bullets starting with "- "
-- Then exactly 2–3 final wrap-up sentences
-- Do NOT mention the speaker, host, presenter, or "this video" — state ideas directly
-- Do NOT use markdown headers, bold, numbered lists, or extra sections
-- Do NOT add anything after the wrap-up
+- Then exactly 2–3 wrap-up sentences — stop immediately after them
+- Do NOT mention the speaker, host, or "this video" — state ideas directly
+- Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
 """

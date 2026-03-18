@@ -6,13 +6,27 @@ label: Quote bank + shareables
 ## short
 
 ```prompt
-Extract shareable quotes.
+Output ONLY shareable quotes from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
-Output:
-- 3 short "tweet-length" lines (under 280 characters each)
-- 2 longer pull quotes (1–2 sentences each)
+Use this exact structure:
 
-Do not invent quotes; only rewrite lightly for clarity.
+Short quotes
+- <tweet-length quote, under 280 characters>
+- <tweet-length quote, under 280 characters>
+- <tweet-length quote, under 280 characters>
+
+Pull quotes
+- <1–2 sentence pull quote>
+- <1–2 sentence pull quote>
+
+Rules:
+- "Short quotes": exactly 3 items
+- "Pull quotes": exactly 2 items
+- Each section label on its own line, followed by "- " bullets
+- Do not invent quotes — only lightly rewrite for clarity
+- No markdown headers, no bold
+
+Stop after the last pull quote. Do not add anything else.
 
 Transcript:
 """
@@ -23,13 +37,26 @@ Transcript:
 ## medium
 
 ```prompt
-Extract shareable quotes.
+Output ONLY shareable quotes from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
-Output:
-- 5 short "tweet-length" lines (under 280 characters each)
-- 3 longer pull quotes (1–2 sentences each)
+Use this exact structure:
 
-Do not invent quotes; only rewrite lightly for clarity.
+Short quotes
+- <tweet-length quote, under 280 characters>
+...
+
+Pull quotes
+- <1–2 sentence pull quote>
+...
+
+Rules:
+- "Short quotes": exactly 5 items
+- "Pull quotes": exactly 3 items
+- Each section label on its own line, followed by "- " bullets
+- Do not invent quotes — only lightly rewrite for clarity
+- No markdown headers, no bold
+
+Stop after the last pull quote. Do not add anything else.
 
 Transcript:
 """
@@ -40,13 +67,26 @@ Transcript:
 ## long
 
 ```prompt
-Extract shareable quotes.
+Output ONLY shareable quotes from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
-Output:
-- 8 short "tweet-length" lines (under 280 characters each)
-- 5 longer pull quotes (1–2 sentences each)
+Use this exact structure:
 
-Do not invent quotes; only rewrite lightly for clarity.
+Short quotes
+- <tweet-length quote, under 280 characters>
+...
+
+Pull quotes
+- <1–2 sentence pull quote>
+...
+
+Rules:
+- "Short quotes": exactly 8 items
+- "Pull quotes": exactly 5 items
+- Each section label on its own line, followed by "- " bullets
+- Do not invent quotes — only lightly rewrite for clarity
+- No markdown headers, no bold
+
+Stop after the last pull quote. Do not add anything else.
 
 Transcript:
 """

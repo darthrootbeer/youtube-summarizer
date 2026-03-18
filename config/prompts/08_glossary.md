@@ -6,13 +6,15 @@ label: Glossary (plain English)
 ## short
 
 ```prompt
-Create a short glossary for a beginner.
+Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
 
 Rules:
-- 3–5 terms max
-- Each definition 1–2 sentences
-- Plain language, no jargon in the definition
-- Format each entry as: "Term: definition"
+- 3–5 terms from the transcript that a beginner might not know
+- Format each entry as: "Term: definition" (one entry per line)
+- Each definition: 1–2 sentences, plain language, no jargon
+- No intro sentence, no conclusion, no section headers, no bold
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """
@@ -23,13 +25,15 @@ Transcript:
 ## medium
 
 ```prompt
-Create a glossary for a beginner.
+Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
 
 Rules:
-- 5–8 terms max
-- Each definition 1–2 sentences
-- Plain language, no jargon in the definition
-- Format each entry as: "Term: definition"
+- 5–8 terms from the transcript that a beginner might not know
+- Format each entry as: "Term: definition" (one entry per line)
+- Each definition: 1–2 sentences, plain language, no jargon
+- No intro sentence, no conclusion, no section headers, no bold
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """
@@ -40,13 +44,15 @@ Transcript:
 ## long
 
 ```prompt
-Create a comprehensive glossary for a beginner.
+Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
 
 Rules:
-- 8–12 terms max
-- Each definition 1–2 sentences
-- Plain language, no jargon in the definition
-- Format each entry as: "Term: definition"
+- 8–12 terms from the transcript that a beginner might not know
+- Format each entry as: "Term: definition" (one entry per line)
+- Each definition: 1–2 sentences, plain language, no jargon
+- No intro sentence, no conclusion, no section headers, no bold
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """

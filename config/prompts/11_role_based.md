@@ -6,13 +6,31 @@ label: Role-based versions (founder/PM/creator)
 ## short
 
 ```prompt
-Rewrite the key takeaways for 3 audiences: Founder, Product manager, Creator.
+Output ONLY role-based takeaways — no preamble, no "Here is...", no sign-off. Begin with the first audience label.
 
-Each audience gets:
-- 1–2 sentences on what this means for them
-- 2 bullets ("What to do next")
+For each of the 3 audiences below, use this exact structure:
 
-Avoid repeating the same bullet across audiences.
+Founder:
+<1–2 sentences on what this means for them>
+- <what to do next>
+- <what to do next>
+
+Product manager:
+<1–2 sentences on what this means for them>
+- <what to do next>
+- <what to do next>
+
+Creator:
+<1–2 sentences on what this means for them>
+- <what to do next>
+- <what to do next>
+
+Rules:
+- Each audience label exactly as shown, ending with ":"
+- Do not repeat the same bullet across audiences
+- No markdown headers, no bold
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """
@@ -23,13 +41,34 @@ Transcript:
 ## medium
 
 ```prompt
-Rewrite the key takeaways for 3 audiences: Founder, Product manager, Creator.
+Output ONLY role-based takeaways — no preamble, no "Here is...", no sign-off. Begin with the first audience label.
 
-Each audience gets:
-- 1 short paragraph on what this means for them
-- 3 bullets ("What to do next")
+For each of the 3 audiences below, use this exact structure:
 
-Avoid repeating the same bullet across audiences.
+Founder:
+<1 short paragraph on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Product manager:
+<1 short paragraph on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Creator:
+<1 short paragraph on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Rules:
+- Each audience label exactly as shown, ending with ":"
+- Do not repeat the same bullet across audiences
+- No markdown headers, no bold
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """
@@ -40,13 +79,37 @@ Transcript:
 ## long
 
 ```prompt
-Rewrite the key takeaways for 3 audiences: Founder, Product manager, Creator.
+Output ONLY role-based takeaways — no preamble, no "Here is...", no sign-off. Begin with the first audience label.
 
-Each audience gets:
-- 2 short paragraphs on what this means for them
-- 4 bullets ("What to do next")
+For each of the 3 audiences below, use this exact structure:
 
-Avoid repeating the same bullet across audiences.
+Founder:
+<2 short paragraphs on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Product manager:
+<2 short paragraphs on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Creator:
+<2 short paragraphs on what this means for them>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+- <what to do next>
+
+Rules:
+- Each audience label exactly as shown, ending with ":"
+- Do not repeat the same bullet across audiences
+- No markdown headers, no bold
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """

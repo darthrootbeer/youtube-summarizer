@@ -6,13 +6,18 @@ label: Key decisions + options
 ## short
 
 ```prompt
-Extract the key decisions implied by the transcript.
+Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off.
 
-Output:
-- 2–3 decisions max
-- For each: decision, 2 options, tradeoffs, recommendation
-- Use plain language and be concise
-- No markdown headers, no bold
+Extract 2–3 key decisions. For each decision, use this exact format:
+
+Decision: <what must be decided>
+Options: <option A> / <option B>
+Tradeoff: <brief tradeoff>
+Recommendation: <what to do>
+
+Separate decisions with a blank line. Use plain language. No markdown headers, no bold.
+
+Stop after the last "Recommendation:" line. Do not add anything else.
 
 Transcript:
 """
@@ -23,13 +28,18 @@ Transcript:
 ## medium
 
 ```prompt
-Extract the key decisions implied by the transcript.
+Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off.
 
-Output:
-- 3–5 decisions max
-- For each: decision, 2–3 options, tradeoffs, recommendation
-- Use plain language and be concise
-- No markdown headers, no bold
+Extract 3–5 key decisions. For each decision, use this exact format:
+
+Decision: <what must be decided>
+Options: <option A> / <option B> / <option C>
+Tradeoff: <brief tradeoff>
+Recommendation: <what to do>
+
+Separate decisions with a blank line. Use plain language. No markdown headers, no bold.
+
+Stop after the last "Recommendation:" line. Do not add anything else.
 
 Transcript:
 """
@@ -40,13 +50,18 @@ Transcript:
 ## long
 
 ```prompt
-Extract the key decisions implied by the transcript.
+Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off.
 
-Output:
-- 5–8 decisions max
-- For each: decision, 2–3 options, tradeoffs, recommendation
-- Use plain language and be concise
-- No markdown headers, no bold
+Extract 5–8 key decisions. For each decision, use this exact format:
+
+Decision: <what must be decided>
+Options: <option A> / <option B> / <option C>
+Tradeoff: <brief tradeoff>
+Recommendation: <what to do>
+
+Separate decisions with a blank line. Use plain language. No markdown headers, no bold.
+
+Stop after the last "Recommendation:" line. Do not add anything else.
 
 Transcript:
 """

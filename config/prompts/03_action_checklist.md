@@ -6,14 +6,16 @@ label: Action checklist
 ## short
 
 ```prompt
-Turn this transcript into a short action checklist someone could follow.
+Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Maximum 8 action items total
-- Each item must start with "- ☐ " (dash, space, checkbox, space)
-- Group into 1–2 short sections using plain text labels ending with ":" (e.g. "This week:")
-- Avoid repeating the same advice in multiple items
+- Each item MUST start with exactly "- ☐ " (dash, space, the ☐ character, space) — copy that character exactly
+- Group into 1–2 sections using plain text labels ending with ":" on their own line (e.g. "This week:")
 - No numbered lists, no markdown headers, no bold
+- No repeated advice across items
+
+Stop after the last action item. Do not add anything else.
 
 Transcript:
 """
@@ -24,14 +26,16 @@ Transcript:
 ## medium
 
 ```prompt
-Turn this transcript into an action checklist someone could follow.
+Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Maximum 15 action items total
-- Each item must start with "- ☐ " (dash, space, checkbox, space)
-- Group into 2–4 short sections using plain text labels ending with ":" (e.g. "This week:")
-- Avoid repeating the same advice in multiple items
+- Each item MUST start with exactly "- ☐ " (dash, space, the ☐ character, space) — copy that character exactly
+- Group into 2–4 sections using plain text labels ending with ":" on their own line (e.g. "This week:", "This month:")
 - No numbered lists, no markdown headers, no bold
+- No repeated advice across items
+
+Stop after the last action item. Do not add anything else.
 
 Transcript:
 """
@@ -42,14 +46,16 @@ Transcript:
 ## long
 
 ```prompt
-Turn this transcript into a comprehensive action checklist someone could follow.
+Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Maximum 25 action items total
-- Each item must start with "- ☐ " (dash, space, checkbox, space)
-- Group into 3–6 short sections using plain text labels ending with ":" (e.g. "This week:", "Long term:")
-- Avoid repeating the same advice in multiple items
+- Each item MUST start with exactly "- ☐ " (dash, space, the ☐ character, space) — copy that character exactly
+- Group into 3–6 sections using plain text labels ending with ":" on their own line (e.g. "This week:", "This month:", "Long term:")
 - No numbered lists, no markdown headers, no bold
+- No repeated advice across items
+
+Stop after the last action item. Do not add anything else.
 
 Transcript:
 """

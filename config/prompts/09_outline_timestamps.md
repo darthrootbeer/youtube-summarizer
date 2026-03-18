@@ -6,12 +6,15 @@ label: Structured outline with timestamps
 ## short
 
 ```prompt
-Create a structured outline with timestamps if they appear or can be inferred.
+Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
 - 3–5 sections max
-- Each section: timestamp (or "-"), title, 1 sentence summary
-- No markdown headers, no bold
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary
+- If no timestamp can be inferred, use [-] instead
+- No markdown headers, no bold, no sub-bullets
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """
@@ -22,12 +25,15 @@ Transcript:
 ## medium
 
 ```prompt
-Create a structured outline with timestamps if they appear or can be inferred.
+Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
 - 6–10 sections max
-- Each section: timestamp (or "-"), title, 1 sentence summary
-- No markdown headers, no bold
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary
+- If no timestamp can be inferred, use [-] instead
+- No markdown headers, no bold, no sub-bullets
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """
@@ -38,12 +44,15 @@ Transcript:
 ## long
 
 ```prompt
-Create a detailed structured outline with timestamps if they appear or can be inferred.
+Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
 - 10–16 sections max
-- Each section: timestamp (or "-"), title, 1 sentence summary
-- No markdown headers, no bold
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary
+- If no timestamp can be inferred, use [-] instead
+- No markdown headers, no bold, no sub-bullets
+
+Stop after the last entry. Do not add anything else.
 
 Transcript:
 """

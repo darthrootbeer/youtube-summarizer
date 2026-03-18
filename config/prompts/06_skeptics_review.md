@@ -6,14 +6,30 @@ label: Skeptic's review (what's missing / questionable)
 ## short
 
 ```prompt
-Write a skeptical review of the transcript.
+Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+
+Use this exact structure:
+
+Strong points
+- <point>
+- <point>
+
+Weak points / missing evidence
+- <point>
+- <point>
+
+What would change my mind
+- <point>
+- <point>
 
 Rules:
-- Section "Strong points" with 2–3 "- " bullets
-- Section "Weak points / missing evidence" with 2–3 "- " bullets
-- End with "What would change my mind" and exactly 2 "- " bullets
-- Keep it constructive, not snarky
-- No markdown headers, no bold
+- "Strong points": 2–3 bullets
+- "Weak points / missing evidence": 2–3 bullets
+- "What would change my mind": exactly 2 bullets
+- Each section label on its own line, followed by "- " bullets
+- Constructive, not snarky. No markdown headers, no bold.
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """
@@ -24,14 +40,31 @@ Transcript:
 ## medium
 
 ```prompt
-Write a skeptical review of the transcript.
+Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+
+Use this exact structure:
+
+Strong points
+- <point>
+...
+
+Weak points / missing evidence
+- <point>
+...
+
+What would change my mind
+- <point>
+- <point>
+- <point>
 
 Rules:
-- Section "Strong points" with 3–5 "- " bullets
-- Section "Weak points / missing evidence" with 3–5 "- " bullets
-- End with "What would change my mind" and exactly 3 "- " bullets
-- Keep it constructive, not snarky
-- No markdown headers, no bold
+- "Strong points": 3–5 bullets
+- "Weak points / missing evidence": 3–5 bullets
+- "What would change my mind": exactly 3 bullets
+- Each section label on its own line, followed by "- " bullets
+- Constructive, not snarky. No markdown headers, no bold.
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """
@@ -42,14 +75,32 @@ Transcript:
 ## long
 
 ```prompt
-Write a skeptical review of the transcript.
+Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+
+Use this exact structure:
+
+Strong points
+- <point>
+...
+
+Weak points / missing evidence
+- <point>
+...
+
+What would change my mind
+- <point>
+- <point>
+- <point>
+- <point>
 
 Rules:
-- Section "Strong points" with 5–7 "- " bullets
-- Section "Weak points / missing evidence" with 5–7 "- " bullets
-- End with "What would change my mind" and exactly 4 "- " bullets
-- Keep it constructive, not snarky
-- No markdown headers, no bold
+- "Strong points": 5–7 bullets
+- "Weak points / missing evidence": 5–7 bullets
+- "What would change my mind": exactly 4 bullets
+- Each section label on its own line, followed by "- " bullets
+- Constructive, not snarky. No markdown headers, no bold.
+
+Stop after the last bullet. Do not add anything else.
 
 Transcript:
 """

@@ -6,11 +6,15 @@ label: TL;DR + things to remember
 ## short
 
 ```prompt
-Write:
-1) A TL;DR of 1–2 sentences
-2) "If you only remember 3 things" with exactly 3 "- " bullets
+Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Avoid repetition and avoid hype.
+Write a TL;DR of 1–2 sentences.
+
+Then output the exact line "If you only remember 3 things" followed by exactly 3 bullets using "- ".
+
+No repetition. No hype. No markdown headers, no bold.
+
+Stop after the third bullet. Do not add anything else.
 
 Transcript:
 """
@@ -21,11 +25,15 @@ Transcript:
 ## medium
 
 ```prompt
-Write:
-1) A TL;DR of 2–3 sentences
-2) "If you only remember 5 things" with exactly 5 "- " bullets
+Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Avoid repetition and avoid hype.
+Write a TL;DR of 2–3 sentences.
+
+Then output the exact line "If you only remember 5 things" followed by exactly 5 bullets using "- ".
+
+No repetition. No hype. No markdown headers, no bold.
+
+Stop after the fifth bullet. Do not add anything else.
 
 Transcript:
 """
@@ -36,11 +44,15 @@ Transcript:
 ## long
 
 ```prompt
-Write:
-1) A TL;DR of 3–4 sentences
-2) "If you only remember 8 things" with exactly 8 "- " bullets
+Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Avoid repetition and avoid hype.
+Write a TL;DR of 3–4 sentences.
+
+Then output the exact line "If you only remember 8 things" followed by exactly 8 bullets using "- ".
+
+No repetition. No hype. No markdown headers, no bold.
+
+Stop after the eighth bullet. Do not add anything else.
 
 Transcript:
 """
