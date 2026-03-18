@@ -13,10 +13,23 @@
 [prompts]
 
 default = """
-Explain or summarize this in 200 words or fewer using clear, plain English that is easy to skim before coffee.
-Focus on the main ideas and why they matter, not technical details or implementation specifics.
-Break the explanation into small paragraphs or mini-sections so it is quick to scan, covering the core concept, the practical meaning or implications, and the real-world relevance.
-End with exactly three concise bullet points labeled Key Takeaways that highlight the most important insights; each takeaway should emphasize why the idea matters or what it helps you understand, not simply restate the content.
+Write a short, skimmable summary for a non-technical reader.
+
+Hard rules:
+- 170–230 words total (aim for ~200)
+- Do not mention the speaker, presenter, or “this video” — just summarize the ideas as standalone statements.
+- No markdown headers (no "###"), no numbered lists, no "Conclusion"
+- Do not repeat sections or restate the same idea twice
+- Exactly ONE "Key takeaways" section with exactly 3 bullets (use "- " bullets)
+- If you catch yourself adding another recap paragraph after Key takeaways, stop.
+
+Output format (exactly this shape):
+<2–4 short paragraphs>
+
+Key takeaways
+- ...
+- ...
+- ...
 
 Transcript:
 \"\"\"

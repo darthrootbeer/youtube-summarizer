@@ -8,9 +8,18 @@ Monitors a list of YouTube channels and emails you a clean summary when a new vi
 - For each new video:
   - Try to fetch the **YouTube transcript**.
   - If there’s no transcript, **download audio** and transcribe locally (Parakeet on Apple Silicon by default).
-  - Create a summary (prompt-driven; supports per-channel prompt selection).
+  - Create one or more outputs (prompt-driven; can include multiple sections per email).
   - Send a well-formatted email with the summary + a link to the video.
 - Track what’s already been processed in a local **SQLite** database so you don’t get duplicates.
+
+## “Queue” playlists (recommended workflow)
+
+The easiest way to “send a video to the app” is to use YouTube playlists as queues:
+
+- **SUMMARIZE playlist**: add any video to this playlist, and the app will summarize it using your configured prompts.
+- **TRANSCRIBE playlist**: add any video to this playlist, and the app will send you a cleaned, readable transcript (no summarizing).
+
+Configure these playlists in `config/channels.toml`.
 
 ## Do I need API keys?
 
@@ -76,7 +85,8 @@ pip install -r requirements.txt
 ### 3) Configure channels + email
 
 - Edit `config/channels.toml`
-- Optional: edit `config/prompts.toml` (and/or set `prompt = "..."` per channel)
+- Optional: edit `config/process.md` (which prompts/sections to run for summarize mode)
+- Optional: edit `config/transcribe.md` (AI cleanup prompt for transcribe mode)
 - Copy `.env.example` to `.env` and fill in values (especially Gmail app password)
 
 ### 3b) (Optional) Avoid Hugging Face download rate limits
@@ -99,6 +109,16 @@ Run once (manual):
 source .venv/bin/activate
 python -m youtube_summarizer run
 ```
+
+## Configuration quick reference
+
+- `config/channels.toml`
+  - `mode = "summarize"`: multi-section summary email (uses `config/process.md`)
+  - `mode = "transcribe"`: transcript-only email (no summarizing)
+- `config/process.md`
+  - defines which summarization prompts are enabled (each enabled prompt becomes a section in the email)
+- `config/transcribe.md`
+  - defines the optional AI cleanup prompt for transcripts (used only if enabled via env)
 
 ## First-run checklist (recommended)
 

@@ -6,21 +6,22 @@ It starts with a plain‑language overview, then progressively gets more detaile
 
 ## What this does (plain language)
 
-You give the app a list of YouTube channels.
+You give the app a list of YouTube channels and/or playlists.
 
 On a schedule (or when you run it manually), it:
 
 - Checks each channel for new videos.
 - For each new video, it tries to grab the written transcript from YouTube.
 - If there’s no transcript, it downloads **audio only** and transcribes it locally on your Mac.
-- It summarizes the transcript with a local AI model (Ollama), then emails you the result.
+- It produces one or more outputs (summaries and/or transcripts), then emails you the result.
 - It remembers what it already processed so you don’t get duplicates.
 
 ## The “happy path” (high level pipeline)
 
 1. **Load configuration**
    - Channels list from `config/channels.toml`
-   - Prompt templates from `config/prompts.toml`
+   - Summarize prompt set from `config/process.md`
+   - (Optional) Transcribe cleanup prompt from `config/transcribe.md`
    - Settings from `.env` (loaded into environment variables)
 2. **Fetch recent videos**
    - Build an RSS URL for each channel
@@ -30,8 +31,9 @@ On a schedule (or when you run it manually), it:
 4. **Get transcript**
    - Prefer YouTube’s transcript when available
    - Otherwise download audio + transcribe locally
-5. **Summarize**
-   - Use Ollama if configured, otherwise fall back to a simple placeholder summarizer
+5. **Produce output**
+   - **Summarize mode**: run one or more enabled prompts (each becomes a separate email section)
+   - **Transcribe mode**: generate a cleaned transcript (no summarizing)
 6. **Render + send email**
    - Render HTML email with a clean layout
    - Include a “Beta stats” footer so we can see performance characteristics
@@ -44,10 +46,12 @@ On a schedule (or when you run it manually), it:
 
 - `config/channels.toml`
   - A list of sources (usually YouTube channel URLs in the `.../channel/UC...` form)
-  - Each channel can optionally select a summarization prompt with `prompt = "some_key"`
-- `config/prompts.toml`
-  - A library of prompt templates under `[prompts]`
-  - Each prompt must include a `{transcript}` placeholder
+  - Each source can be `mode = "summarize"` or `mode = "transcribe"`
+- `config/process.md`
+  - Summarize-mode “jobs” (prompt templates)
+  - Each enabled prompt becomes a labeled section in the email
+- `config/transcribe.md`
+  - Transcribe-mode optional AI cleanup prompt (only used when enabled via env)
 - `.env` (not committed)
   - Email settings, transcription backend choice, cookies settings, and optional Ollama model name
 - `.env.example`
@@ -69,8 +73,8 @@ On a schedule (or when you run it manually), it:
 ### Summarization
 
 - `youtube_summarizer/summarizer.py`
-  - Calls Ollama (`ollama run ...`) using the selected prompt template
-  - Falls back to a simple summary if Ollama is unavailable or not configured
+  - Calls Ollama (`ollama run ...`) using enabled prompt templates
+  - Includes a conservative cleanup pass to avoid repeated/extra sections leaking into emails
 
 ### Email sending
 
@@ -116,9 +120,17 @@ If there’s no transcript:
 
 If `YTS_OLLAMA_MODEL` is set, the summarizer:
 
-- Builds a prompt from `config/prompts.toml`
+- Builds prompts from `config/process.md`
 - Calls `ollama run <model>`
-- Returns the generated summary text
+- Returns the generated output text
+
+## Transcribe mode (transcript-only emails)
+
+Transcribe mode is designed for “just give me an accurate transcript” workflows:
+
+- Always downloads audio and transcribes locally (Parakeet by default)
+- Produces a cleaned, readable transcript (no summarizing)
+- Optional: enable AI-assisted cleanup using `config/transcribe.md` + `YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA=1`
 
 ### Fallback summarization
 

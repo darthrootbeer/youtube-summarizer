@@ -7,15 +7,22 @@ import time
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
+from uuid import uuid4
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
+import re
 
 from youtube_summarizer import db
-from youtube_summarizer.config import load_channels, load_prompts, load_settings, repo_root
+from youtube_summarizer.config import load_channels, load_process_prompts, load_settings, load_transcribe_prompts, repo_root
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
 from youtube_summarizer.summarizer import summarize_fallback, summarize_with_ollama
-from youtube_summarizer.youtube import fetch_latest_videos_from_rss, fetch_youtube_transcript, source_url_to_rss
+from youtube_summarizer.youtube import (
+    fetch_channel_title_from_rss,
+    fetch_latest_videos_from_rss,
+    fetch_youtube_transcript,
+    source_url_to_rss,
+)
 
 
 @dataclass(frozen=True)
@@ -26,14 +33,15 @@ class TranscriptResult:
 @dataclass(frozen=True)
 class BetaStats:
     video_id: str
+    summary_id: str
     transcript_source: str
-    prompt_key: str
     ollama_model: str | None
+    enabled_prompts: list[str]
     rss_fetch_ms: int | None
     audio_download_ms: int | None
     audio_bytes: int | None
     transcribe_ms: int | None
-    summarize_ms: int | None
+    summarize_ms: int | None  # total summarize time (all prompts)
     email_render_ms: int | None
     email_send_ms: int | None
     total_ms: int
@@ -44,7 +52,8 @@ def run_once(limit: int = 10) -> None:
 
     settings = load_settings()
     channels = load_channels()
-    prompts = load_prompts()
+    process_prompts = load_process_prompts()
+    enabled_prompts = [p for p in process_prompts if p.enabled]
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
@@ -62,11 +71,24 @@ def run_once(limit: int = 10) -> None:
         for ch in channels:
             if remaining <= 0:
                 break
+            mode = (ch.mode or "summarize").strip().lower()
+            mode_filter = os.environ.get("YTS_MODE_FILTER", "").strip().lower()
+            if mode_filter and mode != mode_filter:
+                continue
 
             rss = source_url_to_rss(ch.url)
             if not rss:
                 # Skip quietly; config format is designed to avoid API keys.
                 continue
+
+            channel_title = fetch_channel_title_from_rss(rss)
+            effective_channel_name = (ch.name or "").strip() or (channel_title or "").strip() or ch.url
+            if (not ch.name) and channel_title:
+                _best_effort_update_channel_name_in_config(
+                    config_path=repo_root() / "config" / "channels.toml",
+                    url=ch.url,
+                    name=channel_title,
+                )
 
             # During beta, scan deeper into the RSS feed so we reliably find an unseen video.
             t_rss = time.perf_counter()
@@ -79,38 +101,61 @@ def run_once(limit: int = 10) -> None:
                     continue
 
                 t_total = time.perf_counter()
-                if settings.dry_run:
-                    transcript = TranscriptResult(text="[dry-run placeholder transcript]", source="mock")
-                    transcript_stats = _TranscriptStats(
-                        transcript_source="mock",
-                        audio_download_ms=None,
-                        audio_bytes=None,
-                        transcribe_ms=None,
+                summary_id = _new_summary_id(v.video_id)
+                # Dry-run means: don't email + don't mark as seen.
+                # We still fetch real transcripts/transcriptions so QA runs are meaningful.
+                transcript, transcript_stats = _get_transcript(
+                    video_id=v.video_id,
+                    video_url=v.url,
+                    transcribe_backend=settings.transcribe_backend,
+                    parakeet_model=settings.parakeet_model,
+                    whisper_cpp_model=settings.whisper_cpp_model,
+                    ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
+                    ytdlp_cookies_file=settings.ytdlp_cookies_file,
+                    root=root,
+                    prefer_youtube=(mode != "transcribe"),
+                )
+                # Build email sections
+                t_sum_total = time.perf_counter()
+                sections: list[dict[str, object]] = []
+                per_prompt_s: list[str] = []
+                enabled_prompt_keys: list[str] = []
+                if mode == "transcribe":
+                    enabled_prompt_keys = ["transcribe_clean"]
+                    t_clean = time.perf_counter()
+                    cleaned = _clean_transcript_for_reading(transcript.text, ollama_model=settings.ollama_model)
+                    per_prompt_s.append(f"transcribe_clean={_fmt_ms(_ms_since(t_clean))}")
+                    sections.append(
+                        {
+                            "key": "transcribe_clean",
+                            "label": "Transcript (cleaned)",
+                            "text": cleaned,
+                            "html": _format_transcript_html(cleaned),
+                        }
                     )
                 else:
-                    transcript, transcript_stats = _get_transcript(
-                        video_id=v.video_id,
-                        video_url=v.url,
-                        transcribe_backend=settings.transcribe_backend,
-                        parakeet_model=settings.parakeet_model,
-                        whisper_cpp_model=settings.whisper_cpp_model,
-                        ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
-                        ytdlp_cookies_file=settings.ytdlp_cookies_file,
-                        root=root,
-                    )
-                prompt_key = ch.prompt or "default"
-                prompt_template = prompts.get(prompt_key) or prompts["default"]
-                t_sum = time.perf_counter()
-                summary = _summarize(transcript.text, settings.ollama_model, prompt_template)
-                summarize_ms = _ms_since(t_sum)
+                    enabled_prompt_keys = [p.key for p in enabled_prompts]
+                    for p in enabled_prompts:
+                        t_sum = time.perf_counter()
+                        out = _summarize(transcript.text, settings.ollama_model, p.template)
+                        per_prompt_s.append(f"{p.key}={_fmt_ms(_ms_since(t_sum))}")
+                        sections.append(
+                            {
+                                "key": p.key,
+                                "label": p.label,
+                                "text": out,
+                                "html": _format_summary_html(out),
+                            }
+                        )
+                summarize_ms = _ms_since(t_sum_total)
 
-                subject = f"{settings.subject_prefix}{ch.name} — {v.title}"
-                t_render = time.perf_counter()
+                subject = f"{settings.subject_prefix}{effective_channel_name} — {v.title}"
                 beta_stats = BetaStats(
                     video_id=v.video_id,
+                    summary_id=summary_id,
                     transcript_source=transcript.source,
-                    prompt_key=prompt_key,
                     ollama_model=settings.ollama_model,
+                    enabled_prompts=enabled_prompt_keys,
                     rss_fetch_ms=rss_fetch_ms,
                     audio_download_ms=transcript_stats.audio_download_ms,
                     audio_bytes=transcript_stats.audio_bytes,
@@ -122,9 +167,15 @@ def run_once(limit: int = 10) -> None:
                 )
                 beta_stats_view = {
                     "video_id": beta_stats.video_id,
+                    "summary_id": beta_stats.summary_id,
                     "transcript_source": beta_stats.transcript_source,
-                    "prompt_key": beta_stats.prompt_key,
                     "ollama_model": beta_stats.ollama_model,
+                    "enabled_prompts": ", ".join(beta_stats.enabled_prompts),
+                    "prompt_count": len(beta_stats.enabled_prompts),
+                    "per_prompt_summarize_s": ", ".join(per_prompt_s),
+                    "transcript_chars": len(transcript.text or ""),
+                    "summary_chars": sum(len(str(s.get("text", "")) or "") for s in sections),
+                    "mode": mode,
                     "rss_fetch_s": _fmt_seconds(beta_stats.rss_fetch_ms),
                     "media_size_mb": _fmt_mb(beta_stats.audio_bytes),
                     "download_media_s": _fmt_seconds(beta_stats.audio_download_ms),
@@ -136,13 +187,16 @@ def run_once(limit: int = 10) -> None:
                     # We include both so you can see the breakdown.
                     "total_before_send_s": None,
                     "total_to_send_s": None,
+                    "qa_notes": "multi-prompt email enabled (beta)",
                 }
+                # Render twice so the email itself can include accurate `email_render_s`.
+                t_render = time.perf_counter()
                 html = template.render(
                     subject=subject,
-                    channel_name=ch.name,
+                    channel_name=effective_channel_name,
                     video_title=v.title,
                     video_url=v.url,
-                    summary_html=_format_summary_html(summary),
+                    sections=sections,
                     transcript_source=transcript.source,
                     published_at=v.published_at,
                     beta_stats=beta_stats_view,
@@ -154,8 +208,35 @@ def run_once(limit: int = 10) -> None:
                 )
                 beta_stats_view["email_render_s"] = _fmt_seconds(beta_stats.email_render_ms)
                 beta_stats_view["total_before_send_s"] = _fmt_seconds(beta_stats.total_ms)
+                # Re-render with updated stats (small overhead, but removes "n/a" during beta).
+                html = template.render(
+                    subject=subject,
+                    channel_name=effective_channel_name,
+                    video_title=v.title,
+                    video_url=v.url,
+                    sections=sections,
+                    transcript_source=transcript.source,
+                    published_at=v.published_at,
+                    beta_stats=beta_stats_view,
+                )
+                # Persist the summary + stats after we know render/total timings.
+                _write_summary_artifact(
+                    root=root,
+                    summary_id=summary_id,
+                    channel_name=effective_channel_name,
+                    video_title=v.title,
+                    video_url=v.url,
+                    video_id=v.video_id,
+                    published_at=v.published_at,
+                    transcript_source=transcript.source,
+                    enabled_prompts=[p.key for p in enabled_prompts],
+                    ollama_model=settings.ollama_model,
+                    sections=sections,
+                    beta_stats=beta_stats,
+                )
                 text = (
-                    f"{ch.name}\n{v.title}\n{v.url}\n\nSummary:\n{summary}\n\n"
+                    f"{effective_channel_name}\n{v.title}\n{v.url}\n\n"
+                    f"{_format_sections_text(sections)}\n\n"
                     f"Transcript source: {transcript.source}\n\n"
                     f"{_format_beta_stats_text(beta_stats)}\n"
                 )
@@ -174,6 +255,14 @@ def run_once(limit: int = 10) -> None:
                     if beta_stats_view["total_before_send_s"] is not None and beta_stats_view["email_send_s"] is not None:
                         total_to_send_s = round(beta_stats_view["total_before_send_s"] + beta_stats_view["email_send_s"], 2)
                     beta_stats_view["total_to_send_s"] = total_to_send_s
+                    beta_stats_view["total_processing_s"] = total_to_send_s
+                    # Persist final stats (including send timing) to the stored summary file.
+                    _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
+                else:
+                    # Even in dry-run, append the final timings we do have for QA.
+                    beta_stats_view["qa_notes"] = "dry-run (no email sent)"
+                    beta_stats_view["total_processing_s"] = beta_stats_view.get("total_before_send_s")
+                    _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
 
                 if not settings.dry_run:
                     db.mark_seen(
@@ -181,7 +270,7 @@ def run_once(limit: int = 10) -> None:
                         db.SeenVideo(
                             video_id=v.video_id,
                             video_url=v.url,
-                            channel_name=ch.name,
+                            channel_name=effective_channel_name,
                             video_title=v.title,
                             published_at=v.published_at,
                         ),
@@ -218,13 +307,16 @@ def _get_transcript(
     ytdlp_cookies_from_browser: str | None,
     ytdlp_cookies_file: str | None,
     root: Path,
+    *,
+    prefer_youtube: bool = True,
 ) -> tuple[TranscriptResult, _TranscriptStats]:
-    yt = fetch_youtube_transcript(video_id)
-    if yt:
-        return (
-            TranscriptResult(text=yt, source="youtube"),
-            _TranscriptStats(transcript_source="youtube", audio_download_ms=None, audio_bytes=None, transcribe_ms=None),
-        )
+    if prefer_youtube:
+        yt = fetch_youtube_transcript(video_id)
+        if yt:
+            return (
+                TranscriptResult(text=yt, source="youtube"),
+                _TranscriptStats(transcript_source="youtube", audio_download_ms=None, audio_bytes=None, transcribe_ms=None),
+            )
 
     backend = (transcribe_backend or "").strip()
     if backend not in ("parakeet_mlx", "whisper_cpp"):
@@ -402,9 +494,10 @@ def _format_beta_stats_text(s: BetaStats) -> str:
     lines = [
         "---",
         "Beta stats",
+        f"- summary_id: {s.summary_id}",
         f"- video_id: {s.video_id}",
         f"- transcript_source: {s.transcript_source}",
-        f"- prompt: {s.prompt_key}",
+        f"- enabled_prompts: {', '.join(s.enabled_prompts)}",
         f"- ollama_model: {s.ollama_model or 'n/a'}",
         f"- rss_fetch_s: {_fmt_ms(s.rss_fetch_ms)}",
         f"- media_size_mb: {_fmt_bytes(s.audio_bytes)}",
@@ -418,6 +511,142 @@ def _format_beta_stats_text(s: BetaStats) -> str:
         "---",
     ]
     return "\n".join(lines)
+
+
+def _format_sections_text(sections: list[dict[str, object]]) -> str:
+    parts: list[str] = []
+    for i, s in enumerate(sections):
+        label = str(s.get("label", "") or "").strip() or str(s.get("key", "") or "").strip() or "Summary"
+        text = str(s.get("text", "") or "").strip()
+        if i > 0:
+            parts.append("\n---\n")
+        parts.append(f"{label}\n{text}".strip())
+    return "\n\n".join([p for p in parts if p.strip()]).strip()
+
+
+def _new_summary_id(video_id: str) -> str:
+    # Short, readable, and unique enough for beta (also safe to paste in chats).
+    return f"{video_id}_{uuid4().hex[:8]}"
+
+
+def _summaries_dir(root: Path) -> Path:
+    p = root / "data" / "summaries"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _write_summary_artifact(
+    *,
+    root: Path,
+    summary_id: str,
+    channel_name: str,
+    video_title: str,
+    video_url: str,
+    video_id: str,
+    published_at: str,
+    transcript_source: str,
+    enabled_prompts: list[str],
+    ollama_model: str | None,
+    sections: list[dict[str, object]],
+    beta_stats: BetaStats,
+) -> None:
+    """
+    Store the exact summary text locally so we can reference it during beta.
+    """
+    path = _summaries_dir(root) / f"{summary_id}.txt"
+    beta_lines = _format_beta_stats_text(beta_stats)
+    body = "\n".join(
+        [
+            f"summary_id: {summary_id}",
+            f"video_id: {video_id}",
+            f"channel: {channel_name}",
+            f"title: {video_title}",
+            f"url: {video_url}",
+            f"published_at: {published_at}",
+            f"transcript_source: {transcript_source}",
+            f"enabled_prompts: {', '.join(enabled_prompts)}",
+            f"ollama_model: {ollama_model or 'n/a'}",
+            "",
+            "SUMMARY",
+            _format_sections_text(sections),
+            "",
+            beta_lines.strip(),
+            "",
+        ]
+    )
+    path.write_text(body, encoding="utf-8")
+
+
+def _append_summary_stats(*, root: Path, summary_id: str, beta_stats_view: dict) -> None:
+    """
+    After we have send timing, append a compact block (best-effort).
+    """
+    path = _summaries_dir(root) / f"{summary_id}.txt"
+    if not path.exists():
+        return
+    try:
+        lines = [
+            "",
+            "FINAL_STATS",
+            f"email_render_s: {beta_stats_view.get('email_render_s', 'n/a')}",
+            f"email_send_s: {beta_stats_view.get('email_send_s', 'n/a')}",
+            f"total_before_send_s: {beta_stats_view.get('total_before_send_s', 'n/a')}",
+            f"total_to_send_s: {beta_stats_view.get('total_to_send_s', 'n/a')}",
+            "",
+        ]
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+    except Exception:
+        return
+
+
+def _best_effort_update_channel_name_in_config(*, config_path: Path, url: str, name: str) -> None:
+    """
+    If a channel entry is missing `name`, write it back into `config/channels.toml`.
+    This is best-effort and intentionally simple (string-based) to avoid adding deps.
+    """
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+    except Exception:
+        return
+
+    # Only patch entries that already contain the URL and do NOT already have a name.
+    # Example accepted shapes:
+    # - { url = "...", prompt = "default" }
+    # - { url = "..." }
+    u = url.replace("\\", "\\\\").replace('"', '\\"')
+    n = name.replace("\\", "\\\\").replace('"', '\\"')
+
+    def repl(match: re.Match) -> str:
+        block = match.group(0)
+        if "name" in block:
+            return block
+        # Insert `name = "..."` right after `{`
+        return block.replace("{", '{ name = "' + n + '", ', 1)
+
+    # Find object literals that contain this url.
+    pattern = re.compile(r"\{[^}]*\burl\s*=\s*\"" + re.escape(u) + r"\"[^}]*\}")
+    updated, n_subs = pattern.subn(repl, raw, count=1)
+    if n_subs <= 0 or updated == raw:
+        return
+    try:
+        config_path.write_text(updated, encoding="utf-8")
+    except Exception:
+        return
+    try:
+        lines = [
+            "",
+            "FINAL_STATS",
+            f"email_render_s: {beta_stats_view.get('email_render_s', 'n/a')}",
+            f"email_send_s: {beta_stats_view.get('email_send_s', 'n/a')}",
+            f"total_before_send_s: {beta_stats_view.get('total_before_send_s', 'n/a')}",
+            f"total_to_send_s: {beta_stats_view.get('total_to_send_s', 'n/a')}",
+            "",
+        ]
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+    except Exception:
+        return
 
 
 def _cleanup_downloads(root: Path) -> None:
@@ -534,6 +763,69 @@ def _format_summary_html(summary: str) -> Markup:
 
     # Ensure Jinja doesn't escape our generated HTML
     return Markup("\n".join(html_parts))
+
+
+def _format_transcript_html(transcript: str) -> Markup:
+    # For cleaned transcript emails: keep it readable and preserve line breaks.
+    s = (transcript or "").strip()
+    if not s:
+        return Markup("")
+    return Markup(f"<div style=\"white-space:pre-wrap;\">{escape(s)}</div>")
+
+
+def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) -> str:
+    """
+    Produces an "email-friendly" transcript:
+    - improves punctuation/paragraph breaks
+    - does NOT summarize
+    """
+    t = (transcript or "").strip()
+    if not t:
+        return t
+
+    # Default: deterministic cleanup for accuracy (no LLM rewriting).
+    # Optional: allow Ollama-based cleanup if explicitly enabled.
+    use_ollama = os.environ.get("YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA", "").strip().lower() in ("1", "true", "yes", "on")
+    if use_ollama and ollama_model:
+        transcribe_prompts = [p for p in load_transcribe_prompts() if p.enabled]
+        prompt_template = (transcribe_prompts[0].template if transcribe_prompts else "").strip()
+        prompt = (prompt_template.format(transcript=t) if prompt_template else f"\"\"\"\n{t}\n\"\"\"")
+        try:
+            res = subprocess.run(
+                ["ollama", "run", ollama_model],
+                input=prompt,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+                timeout=300,
+            )
+            out = (res.stdout or "").strip()
+            return out or t
+        except Exception:
+            return t
+
+    # Simple, accurate reflow:
+    # - remove blank-line noise
+    # - collapse runs of whitespace
+    # - add paragraph breaks roughly every ~800–1200 characters on sentence boundaries
+    raw = " ".join([ln.strip() for ln in t.splitlines() if ln.strip()]).strip()
+    if len(raw) <= 1200:
+        return raw
+
+    paras: list[str] = []
+    buf = ""
+    for part in re.split(r"(?<=[.!?])\s+", raw):
+        if not part:
+            continue
+        if buf and len(buf) + 1 + len(part) > 1000:
+            paras.append(buf.strip())
+            buf = part
+        else:
+            buf = (buf + " " + part).strip()
+    if buf.strip():
+        paras.append(buf.strip())
+    return "\n\n".join(paras).strip()
 
 
 def _load_dotenv_if_present(path: Path) -> None:

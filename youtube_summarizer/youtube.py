@@ -95,6 +95,17 @@ def fetch_latest_videos_from_rss(rss_url: str, limit: int = 10) -> list[Video]:
     return videos
 
 
+def fetch_channel_title_from_rss(rss_url: str) -> str | None:
+    """
+    Best-effort: return the human display name for the RSS feed.
+    """
+    feed = feedparser.parse(rss_url)
+    title = str(getattr(getattr(feed, "feed", None), "title", "") or "").strip()
+    if title:
+        return title
+    return None
+
+
 def _infer_video_id(entry: object, link: str) -> str | None:
     yt_id = getattr(entry, "yt_videoid", None)
     if yt_id:

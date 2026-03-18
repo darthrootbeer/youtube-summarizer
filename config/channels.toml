@@ -9,9 +9,10 @@
 # This lets us build RSS feeds without needing API keys.
 #
 # Each entry:
-# - name: friendly label (used in emails)
+# - name: friendly label (used in emails). Optional — if omitted, we auto-detect it from RSS and write it back here.
 # - url: channel OR playlist URL
-# - prompt: optional prompt key from config/prompts.toml (defaults to "default")
+# - mode: "summarize" (default) or "transcribe"
+# - prompt: optional prompt key from config/prompts.toml (defaults to "default") [summarize mode only]
 #
 # Notes:
 # - We intentionally prefer channel_id / playlist_id URLs because they work cleanly with RSS.
@@ -19,10 +20,14 @@
 
 channels = [
   # --- TEMPLATES (copy/paste one of these blocks) ---
-  # { name = "Channel Name",  url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", prompt = "default" },
-  # { name = "Playlist Name", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx", prompt = "default" },
+  # { name = "Channel Name",  url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", mode = "summarize", prompt = "default" },
+  # { name = "Playlist Name", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx", mode = "summarize", prompt = "default" },
+  # { url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", mode = "summarize", prompt = "default" },
+  # { name = "TRANSCRIBE playlist", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx", mode = "transcribe" },
 
   # --- YOUR SOURCES ---
-  { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ", prompt = "default" },
-  { name = "Alex Finn", url = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg", prompt = "default" },
+  { name = "SUMMARIZE playlist (queue)", url = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhtDgXGGeaMm274Uj_7TCjHq", mode = "summarize", prompt = "default" },
+  { name = "TRANSCRIBE playlist (queue)", url = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhuT2zHku6oSGJAKvXeY_9KW", mode = "transcribe" },
+  { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ", mode = "summarize", prompt = "default" },
+  { name = "Alex Finn", url = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg", mode = "summarize", prompt = "default" },
 ]

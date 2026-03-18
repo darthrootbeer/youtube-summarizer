@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,9 +9,18 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Channel:
-    name: str
+    name: str | None
     url: str
     prompt: str | None = None
+    mode: str | None = None  # "summarize" (default) | "transcribe"
+
+
+@dataclass(frozen=True)
+class ProcessPrompt:
+    key: str
+    label: str
+    enabled: bool
+    template: str
 
 
 @dataclass(frozen=True)
@@ -38,12 +48,13 @@ def load_channels(path: Path | None = None) -> list[Channel]:
     channels = raw.get("channels", [])
     out: list[Channel] = []
     for item in channels:
-        name = str(item.get("name", "")).strip()
+        name = str(item.get("name", "")).strip() or None
         url = str(item.get("url", "")).strip()
         prompt = str(item.get("prompt", "")).strip() or None
-        if not name or not url:
+        mode = str(item.get("mode", "")).strip() or None
+        if not url:
             continue
-        out.append(Channel(name=name, url=url, prompt=prompt))
+        out.append(Channel(name=name, url=url, prompt=prompt, mode=mode))
     return out
 
 
@@ -60,6 +71,88 @@ def load_prompts(path: Path | None = None) -> dict[str, str]:
         out[key] = val
     if "default" not in out:
         raise RuntimeError("Missing prompts.default in config/prompts.toml")
+    return out
+
+
+_PROCESS_SECTION_RE = re.compile(r"(?m)^###\s+([a-zA-Z0-9_-]+)\s*$")
+_PROCESS_ENABLED_RE = re.compile(r"(?mi)^\s*enabled\s*:\s*(true|false)\s*$")
+_PROCESS_LABEL_RE = re.compile(r"(?mi)^\s*label\s*:\s*(.+?)\s*$")
+_PROCESS_FENCE_RE = re.compile(r"(?s)```prompt\s*(.*?)\s*```")
+
+
+def load_process_prompts(path: Path | None = None) -> list[ProcessPrompt]:
+    """
+    Loads markdown-based prompt definitions from `config/process.md`.
+
+    This lets non-developers edit prompts in a friendly format.
+    """
+    cfg_path = path or (repo_root() / "config" / "process.md")
+    if not cfg_path.exists():
+        # Back-compat: fall back to prompts.toml default only
+        prompts = load_prompts()
+        return [ProcessPrompt(key="default", label="Default", enabled=True, template=prompts["default"])]
+
+    raw = cfg_path.read_text(encoding="utf-8")
+    sections = list(_PROCESS_SECTION_RE.finditer(raw))
+    out: list[ProcessPrompt] = []
+    for i, m in enumerate(sections):
+        key = m.group(1).strip()
+        start = m.end()
+        end = sections[i + 1].start() if i + 1 < len(sections) else len(raw)
+        block = raw[start:end]
+
+        enabled_m = _PROCESS_ENABLED_RE.search(block)
+        enabled = (enabled_m.group(1).lower() == "true") if enabled_m else False
+
+        label_m = _PROCESS_LABEL_RE.search(block)
+        label = (label_m.group(1).strip() if label_m else key).strip()
+
+        fence_m = _PROCESS_FENCE_RE.search(block)
+        template = (fence_m.group(1).strip() if fence_m else "").strip()
+        if not template or "{transcript}" not in template:
+            continue
+
+        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, template=template))
+
+    # Ensure there is always at least one enabled prompt.
+    if not any(p.enabled for p in out):
+        prompts = load_prompts()
+        out.insert(0, ProcessPrompt(key="default", label="Default", enabled=True, template=prompts["default"]))
+
+    return out
+
+
+def load_transcribe_prompts(path: Path | None = None) -> list[ProcessPrompt]:
+    """
+    Loads markdown-based prompt definitions from `config/transcribe.md`.
+    Same shape as `config/process.md`, but used for transcript cleanup (transcribe mode).
+    """
+    cfg_path = path or (repo_root() / "config" / "transcribe.md")
+    if not cfg_path.exists():
+        return []
+
+    raw = cfg_path.read_text(encoding="utf-8")
+    sections = list(_PROCESS_SECTION_RE.finditer(raw))
+    out: list[ProcessPrompt] = []
+    for i, m in enumerate(sections):
+        key = m.group(1).strip()
+        start = m.end()
+        end = sections[i + 1].start() if i + 1 < len(sections) else len(raw)
+        block = raw[start:end]
+
+        enabled_m = _PROCESS_ENABLED_RE.search(block)
+        enabled = (enabled_m.group(1).lower() == "true") if enabled_m else False
+
+        label_m = _PROCESS_LABEL_RE.search(block)
+        label = (label_m.group(1).strip() if label_m else key).strip()
+
+        fence_m = _PROCESS_FENCE_RE.search(block)
+        template = (fence_m.group(1).strip() if fence_m else "").strip()
+        if not template or "{transcript}" not in template:
+            continue
+
+        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, template=template))
+
     return out
 
 

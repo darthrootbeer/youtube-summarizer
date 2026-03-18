@@ -55,15 +55,24 @@ pip install -r requirements.txt
 Edit `config/channels.toml`.
 
 - Use channel URLs in the `.../channel/UC...` format (most reliable).
-- Optionally set `prompt = "default"` (or another key you define).
+- Set `mode = "summarize"` for summary emails, or `mode = "transcribe"` for transcript-only emails.
+- For summarize mode, customize which sections run in `config/process.md`.
 
 ## 6) (Optional) Customize the summary style
 
-Edit `config/prompts.toml`.
+Edit `config/process.md`.
 
-- You can add multiple prompt templates under `[prompts]`
-- A channel can select a prompt by setting `prompt = "your_key"` in `config/channels.toml`
-- Keep the `{transcript}` placeholder in every prompt
+- Each enabled prompt becomes a labeled section in the email.
+- Keep the `{transcript}` placeholder.
+
+## 6b) (Optional) Customize transcript cleanup (transcribe mode)
+
+By default, transcript cleanup is deterministic (safe for accuracy).
+
+If you want optional AI-assisted cleanup:
+
+- Edit `config/transcribe.md`
+- Enable it by setting `YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA=1` in your shell (or `.env`)
 
 ## 7) (Optional) Start Ollama for local summaries
 
