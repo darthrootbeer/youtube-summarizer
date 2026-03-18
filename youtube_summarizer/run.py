@@ -238,13 +238,16 @@ def run_once(limit: int = 10) -> int:
                         }
                     )
                 else:
+                    tier = _summary_tier(len(transcript.text))
+                    log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
                     enabled_prompt_keys = [p.key for p in channel_prompts]
                     for p in channel_prompts:
                         log.debug("  running prompt '%s' via ollama=%s ...", p.key, settings.ollama_model or "off")
                         t_sum = time.perf_counter()
-                        out = _summarize(transcript.text, settings.ollama_model, p.template)
+                        tmpl = _apply_tier_vars(p.template, tier) if p.key == "default" else p.template
+                        out = _summarize(transcript.text, settings.ollama_model, tmpl)
                         if p.key == "default":
-                            out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model)
+                            out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model, min_bullets=int(tier["bullet_count"]))
                         elapsed = _ms_since(t_sum)
                         per_prompt_s.append(f"{p.key}={_fmt_ms(elapsed)}")
                         log.debug("  prompt '%s' done in %s (%d chars out)", p.key, _fmt_ms(elapsed), len(out))
@@ -417,6 +420,47 @@ def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
         else:
             # If we processed something, loop again immediately to catch up quickly.
             continue
+
+
+def _summary_tier(transcript_chars: int) -> dict:
+    """
+    Returns length-adaptive summarization targets based on estimated video duration.
+
+    Thresholds (approx 900 chars/min of speech):
+      short  < 8,000 chars  →  ~< 9 min
+      medium 8,000–22,000   →  ~9–25 min
+      long   > 22,000       →  ~25+ min
+    """
+    if transcript_chars < 8_000:
+        return {
+            "tier": "short",
+            "word_target": "100",
+            "bullet_count": "3",
+            "wrapup_instruction": "1 sentence wrap-up",
+        }
+    if transcript_chars < 22_000:
+        return {
+            "tier": "medium",
+            "word_target": "200",
+            "bullet_count": "5",
+            "wrapup_instruction": "1-2 sentence wrap-up",
+        }
+    return {
+        "tier": "long",
+        "word_target": "300",
+        "bullet_count": "8",
+        "wrapup_instruction": "2-3 sentence wrap-up",
+    }
+
+
+def _apply_tier_vars(template: str, tier: dict) -> str:
+    """Fill tier placeholders in a prompt template, leaving {transcript} intact."""
+    return (
+        template
+        .replace("{word_target}", tier["word_target"])
+        .replace("{bullet_count}", tier["bullet_count"])
+        .replace("{wrapup_instruction}", tier["wrapup_instruction"])
+    )
 
 
 def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
@@ -1070,44 +1114,43 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
     return out
 
 
-def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | None) -> str:
+def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | None, *, min_bullets: int = 3) -> str:
     """
-    Default summary must contain exactly 3 "- " bullets under a "Key takeaways" line.
-    If the model forgets, we repair it.
+    Default summary must contain at least `min_bullets` bullets under a "Key takeaways" line.
+    If the model forgets or produces too few, we repair it.
     """
     s = (summary or "").strip()
     if not s:
         return s
 
-    if _has_three_key_takeaway_bullets(s):
-        return _truncate_key_takeaways_to_three(s)
+    if _has_enough_bullets(s, min_bullets):
+        return _trim_bullets(s, min_bullets)
 
     if not ollama_model:
-        repaired = _truncate_key_takeaways_to_three(s)
-        if _has_three_key_takeaway_bullets(repaired):
+        repaired = _trim_bullets(s, min_bullets)
+        if _has_enough_bullets(repaired, min_bullets):
             return repaired
         core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
         return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
 
+    bullet_examples = "\n".join(f"- <point {i+1}>" for i in range(min_bullets))
     prompt = f"""Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no preamble, no explanation.
 
 REQUIRED FORMAT:
 <1 sentence intro>
 
-<prose paragraphs, ~200 words, 7th grade reading level>
+<prose paragraphs, 7th grade reading level>
 
 Key takeaways
-- <point 1>
-- <point 2>
-- <point 3>
+{bullet_examples}
 
-<1 sentence wrap-up>
+<wrap-up sentence(s)>
 
 Rules:
 - Plain prose paragraphs only (no bullets, no bold, no headers in the paragraphs)
 - The line "Key takeaways" must appear exactly as written, alone on its line
-- Exactly 3 bullets after "Key takeaways", each starting with "- "
-- End with exactly 1 wrap-up sentence after the bullets
+- Exactly {min_bullets} bullets after "Key takeaways", each starting with "- "
+- End with a wrap-up after the bullets
 - Do NOT start with "Here is", "Here's", or any preamble
 
 Current (malformed) summary:
@@ -1126,13 +1169,13 @@ Current (malformed) summary:
             timeout=120,
         )
         fixed = (res.stdout or "").strip() or s
-        fixed = _truncate_key_takeaways_to_three(fixed)
+        fixed = _trim_bullets(fixed, min_bullets)
         return fixed
     except Exception:
-        return _truncate_key_takeaways_to_three(s)
+        return _trim_bullets(s, min_bullets)
 
 
-def _has_three_key_takeaway_bullets(text: str) -> bool:
+def _has_enough_bullets(text: str, min_count: int = 3) -> bool:
     m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
     if not m:
         return False
@@ -1147,10 +1190,11 @@ def _has_three_key_takeaway_bullets(text: str) -> bool:
             continue
         if bullets:
             break
-    return len(bullets) >= 3
+    return len(bullets) >= min_count
 
 
-def _truncate_key_takeaways_to_three(text: str) -> str:
+def _trim_bullets(text: str, max_count: int = 3) -> str:
+    """Keep at most `max_count` bullets under the Key takeaways section, preserving wrap-up."""
     m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
     if not m:
         return text.strip()
@@ -1168,7 +1212,7 @@ def _truncate_key_takeaways_to_three(text: str) -> str:
             collecting_remaining = True
             if line:
                 remaining_lines.append(line)
-    bullets = bullets[:3]
+    bullets = bullets[:max_count]
     parts = [before, "Key takeaways", "\n".join(bullets)]
     if remaining_lines:
         parts.append(" ".join(remaining_lines))

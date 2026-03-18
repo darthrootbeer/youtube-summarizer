@@ -25,26 +25,25 @@ FORMAT (copy this structure exactly):
 ---
 <1 sentence introduction to what this is about>
 
-<~200 word summary in plain prose paragraphs>
+<~{word_target} word summary in plain prose paragraphs>
 
 Key takeaways
 - <takeaway 1>
-- <takeaway 2>
-- <takeaway 3>
+... exactly {bullet_count} bullets ...
 
-<1 sentence wrap-up>
+<{wrapup_instruction}>
 ---
 
 Rules:
 - Write at a 7th grade reading level throughout — short sentences, plain words, no jargon
 - The first line is exactly 1 sentence that introduces the topic
-- Then 1–3 short paragraphs totalling ~200 words (no bullets in the paragraphs)
+- Then 1–3 short paragraphs totalling ~{word_target} words (no bullets in the paragraphs)
 - Then the line “Key takeaways” (exactly that, nothing else on the line)
-- Then exactly 3 bullets starting with “- “
-- Then exactly 1 final wrap-up sentence
+- Then exactly {bullet_count} bullets starting with “- “
+- Then exactly {wrapup_instruction} after the last bullet
 - Do NOT mention the speaker, host, presenter, or “this video” — state ideas directly
 - Do NOT use markdown headers, bold, numbered lists, or extra sections
-- Do NOT add anything after the wrap-up sentence
+- Do NOT add anything after the wrap-up
 
 Transcript:
 “””
