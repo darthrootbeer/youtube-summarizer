@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import json
 import subprocess
@@ -11,6 +12,21 @@ from email.utils import parsedate_to_datetime
 from html import escape
 from pathlib import Path
 from uuid import uuid4
+
+log = logging.getLogger("youtube_summarizer")
+
+
+def setup_logging() -> None:
+    """Configure logging from YTS_LOG_LEVEL env var (default INFO, DEBUG for full audit trail)."""
+    level_name = os.environ.get("YTS_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
+    )
+    log.debug("Logging initialised at level %s", level_name)
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
@@ -60,6 +76,7 @@ class BetaStats:
 
 def run_once(limit: int = 10) -> int:
     _load_dotenv_if_present(repo_root() / ".env")
+    setup_logging()
 
     settings = load_settings()
     channels = load_channels()
@@ -67,6 +84,10 @@ def run_once(limit: int = 10) -> int:
     all_enabled_prompts = [p for p in process_prompts if p.enabled]
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
+
+    log.info("run_once: %d source(s) configured, limit=%d, dry_run=%s, ollama=%s",
+             len(channels), limit, settings.dry_run, settings.ollama_model or "off")
+    log.debug("Enabled summarize prompts: %s", [p.key for p in all_enabled_prompts])
 
     root = repo_root()
     _cleanup_downloads(root)
@@ -86,11 +107,14 @@ def run_once(limit: int = 10) -> int:
             mode = ch.mode
             mode_filter = os.environ.get("YTS_MODE_FILTER", "").strip().lower()
             if mode_filter and mode != mode_filter:
+                log.debug("Skipping %s (mode filter: %s != %s)", ch.url, mode, mode_filter)
                 continue
+
+            log.debug("Checking source: [%s] %s (%s)", ch.source_type, ch.name or ch.url, mode)
 
             rss = source_url_to_rss(ch.url)
             if not rss:
-                # Skip quietly; config format is designed to avoid API keys.
+                log.warning("Could not build RSS URL for %s — skipping", ch.url)
                 continue
 
             channel_title = fetch_channel_title_from_rss(rss)
@@ -106,15 +130,19 @@ def run_once(limit: int = 10) -> int:
             t_rss = time.perf_counter()
             videos = fetch_latest_videos_from_rss(rss, limit=30)
             rss_fetch_ms = _ms_since(t_rss)
+            log.debug("RSS fetch for '%s': %d video(s) in %dms", effective_channel_name, len(videos), rss_fetch_ms)
             if not videos:
                 # Some playlists don't reliably expose items via RSS (even when unlisted).
                 # Fallback to yt-dlp to enumerate playlist items (best-effort).
+                log.debug("RSS empty — falling back to yt-dlp playlist enumeration for %s", ch.url)
                 videos = _fetch_videos_via_ytdlp_playlist(
                     playlist_url=ch.url,
                     limit=30,
                     ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
                     ytdlp_cookies_file=settings.ytdlp_cookies_file,
                 )
+                log.debug("yt-dlp fallback found %d video(s)", len(videos))
+
             # Bootstrap: on first encounter of a subscription, mark all current RSS videos as seen
             # without processing them. This prevents flooding on newly-added channels.
             # Queue playlists are NOT bootstrapped — they are always drained to empty.
@@ -133,7 +161,8 @@ def run_once(limit: int = 10) -> int:
                             ),
                         )
                 mark_bootstrapped(conn, ch.url)
-                print(f"[bootstrap] {effective_channel_name}: marked {len(videos)} existing video(s) as seen, will process new videos going forward.")
+                log.info("[bootstrap] %s: marked %d existing video(s) as seen — will only process new videos going forward",
+                         effective_channel_name, len(videos))
                 continue
 
             # Determine which prompts to run for this channel.
@@ -145,6 +174,8 @@ def run_once(limit: int = 10) -> int:
             else:
                 channel_prompts = all_enabled_prompts
 
+            log.debug("Prompts for '%s': %s", effective_channel_name, [p.key for p in channel_prompts])
+
             # Source label for the email (human-readable type tag).
             source_label = {
                 "subscription": "Subscription",
@@ -152,18 +183,24 @@ def run_once(limit: int = 10) -> int:
                 "transcribe_queue": "Transcribe Queue",
             }.get(ch.source_type, ch.source_type)
 
+            unseen = [v for v in videos if not db.has_seen(conn, v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}")]
+            log.debug("'%s': %d/%d video(s) unseen", effective_channel_name, len(unseen), len(videos))
+
             for v in videos:
                 if remaining <= 0:
                     break
                 # Allow the same video to be processed separately for summarize vs transcribe queues.
                 seen_id = v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}"
                 if db.has_seen(conn, seen_id):
+                    log.debug("  skip (already seen): %s", v.title)
                     continue
 
+                log.info("Processing [%s] '%s' — %s", ch.source_type, v.title, v.video_id)
                 t_total = time.perf_counter()
                 summary_id = _new_summary_id(v.video_id)
                 # Dry-run means: don't email + don't mark as seen.
                 # We still fetch real transcripts/transcriptions so QA runs are meaningful.
+                log.debug("  fetching transcript via %s ...", settings.transcribe_backend)
                 transcript, transcript_stats = _get_transcript(
                     video_id=v.video_id,
                     video_url=v.url,
@@ -175,6 +212,11 @@ def run_once(limit: int = 10) -> int:
                     root=root,
                     prefer_youtube=False,
                 )
+                log.debug("  transcript: source=%s chars=%d download=%s transcribe=%s",
+                          transcript.source, len(transcript.text or ""),
+                          _fmt_ms(transcript_stats.audio_download_ms),
+                          _fmt_ms(transcript_stats.transcribe_ms))
+
                 # Build email sections
                 t_sum_total = time.perf_counter()
                 sections: list[dict[str, object]] = []
@@ -182,9 +224,11 @@ def run_once(limit: int = 10) -> int:
                 enabled_prompt_keys: list[str] = []
                 if mode == "transcribe":
                     enabled_prompt_keys = ["transcribe_clean"]
+                    log.debug("  running transcribe cleanup...")
                     t_clean = time.perf_counter()
                     cleaned = _clean_transcript_for_reading(transcript.text, ollama_model=settings.ollama_model)
                     per_prompt_s.append(f"transcribe_clean={_fmt_ms(_ms_since(t_clean))}")
+                    log.debug("  transcribe cleanup done in %s", _fmt_ms(_ms_since(t_clean)))
                     sections.append(
                         {
                             "key": "transcribe_clean",
@@ -196,11 +240,14 @@ def run_once(limit: int = 10) -> int:
                 else:
                     enabled_prompt_keys = [p.key for p in channel_prompts]
                     for p in channel_prompts:
+                        log.debug("  running prompt '%s' via ollama=%s ...", p.key, settings.ollama_model or "off")
                         t_sum = time.perf_counter()
                         out = _summarize(transcript.text, settings.ollama_model, p.template)
                         if p.key == "default":
                             out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model)
-                        per_prompt_s.append(f"{p.key}={_fmt_ms(_ms_since(t_sum))}")
+                        elapsed = _ms_since(t_sum)
+                        per_prompt_s.append(f"{p.key}={_fmt_ms(elapsed)}")
+                        log.debug("  prompt '%s' done in %s (%d chars out)", p.key, _fmt_ms(elapsed), len(out))
                         sections.append(
                             {
                                 "key": p.key,
@@ -305,6 +352,7 @@ def run_once(limit: int = 10) -> int:
                 )
 
                 if not settings.dry_run:
+                    log.info("  sending email: %s", subject)
                     t_send = time.perf_counter()
                     send_gmail_smtp(
                         email_from=settings.email_from,
@@ -313,6 +361,7 @@ def run_once(limit: int = 10) -> int:
                         content=EmailContent(subject=subject, text=text, html=html),
                     )
                     beta_stats = BetaStats(**{**beta_stats.__dict__, "email_send_ms": _ms_since(t_send)})
+                    log.info("  email sent in %s", _fmt_ms(beta_stats.email_send_ms))
                     beta_stats_view["email_send_s"] = _fmt_seconds(beta_stats.email_send_ms)
                     total_to_send_s = None
                     if beta_stats_view["total_before_send_s"] is not None and beta_stats_view["email_send_s"] is not None:
@@ -323,11 +372,13 @@ def run_once(limit: int = 10) -> int:
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
                 else:
                     # Even in dry-run, append the final timings we do have for QA.
+                    log.info("  dry-run: email suppressed for '%s'", v.title)
                     beta_stats_view["qa_notes"] = "dry-run (no email sent)"
                     beta_stats_view["total_processing_s"] = beta_stats_view.get("total_before_send_s")
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
 
                 if not settings.dry_run:
+                    log.debug("  marking seen: %s", seen_id)
                     db.mark_seen(
                         conn,
                         db.SeenVideo(
@@ -340,7 +391,9 @@ def run_once(limit: int = 10) -> int:
                     )
                 remaining -= 1
                 processed += 1
+                log.info("  done: total=%s remaining_slots=%d", _fmt_ms(_ms_since(t_total)), remaining)
 
+    log.info("run_once complete: processed %d video(s)", processed)
     return processed
 
 
@@ -350,9 +403,13 @@ def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
     - Process anything new from configured sources (channels + playlists)
     - If nothing new is found, sleep until the next poll
     """
+    _load_dotenv_if_present(repo_root() / ".env")
+    setup_logging()
+    log.info("Starting watch loop (poll_seconds=%d, limit=%d)", poll_seconds, limit)
     while True:
         n = run_once(limit=limit)
         if n <= 0:
+            log.debug("No new videos found — sleeping %ds", poll_seconds)
             time.sleep(max(5, int(poll_seconds)))
         else:
             # If we processed something, loop again immediately to catch up quickly.
@@ -367,7 +424,7 @@ def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) 
                 return out
         except Exception as e:
             # If Ollama is temporarily unavailable, we still send *something*.
-            print(f"Warning: Ollama summarization failed ({e}), using fallback")
+            log.warning("Ollama summarization failed (%s) — using fallback", e)
             pass
     return summarize_fallback(transcript)
 
