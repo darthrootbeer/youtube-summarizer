@@ -1,7 +1,7 @@
 # outline_timestamps
 
 enabled: false
-label: Structured outline with timestamps
+label: Structured outline
 
 ## short
 
@@ -9,9 +9,11 @@ label: Structured outline with timestamps
 Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
-- 3–5 sections max
-- Format each entry on its own line as: [MM:SS] Title — one sentence summary
-- If no timestamp can be inferred, use [-] instead
+- Exactly 3–5 sections that represent the major topic shifts in the transcript
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary of what is covered
+- If no timestamp can be inferred from the transcript, use [-] instead
+- Title: 2–5 words, specific enough to distinguish this section from others
+- Summary sentence: state the key point made in that section — not just the topic
 - No markdown headers, no bold, no sub-bullets
 
 Stop after the last entry. Do not add anything else.
@@ -28,9 +30,11 @@ Transcript:
 Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
-- 6–10 sections max
-- Format each entry on its own line as: [MM:SS] Title — one sentence summary
-- If no timestamp can be inferred, use [-] instead
+- Exactly 6–10 sections that represent the major topic shifts in the transcript
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary of what is covered
+- If no timestamp can be inferred from the transcript, use [-] instead
+- Title: 2–5 words, specific enough to distinguish this section from others
+- Summary sentence: state the key point or finding in that section — not just the topic
 - No markdown headers, no bold, no sub-bullets
 
 Stop after the last entry. Do not add anything else.
@@ -47,9 +51,11 @@ Transcript:
 Output ONLY a structured outline — no preamble, no "Here is...", no sign-off. Begin with the first entry.
 
 Rules:
-- 10–16 sections max
-- Format each entry on its own line as: [MM:SS] Title — one sentence summary
-- If no timestamp can be inferred, use [-] instead
+- Exactly 10–16 sections that represent the major topic shifts in the transcript
+- Format each entry on its own line as: [MM:SS] Title — one sentence summary of what is covered
+- If no timestamp can be inferred from the transcript, use [-] instead
+- Title: 2–5 words, specific enough to distinguish this section from others
+- Summary sentence: state the key point or finding in that section — not just the topic
 - No markdown headers, no bold, no sub-bullets
 
 Stop after the last entry. Do not add anything else.

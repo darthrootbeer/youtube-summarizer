@@ -1,18 +1,25 @@
 # tldr_5_things
 
 enabled: false
-label: TL;DR + things to remember
+label: TL;DR — things to remember
 
 ## short
 
 ```prompt
 Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Write a TL;DR of 1–2 sentences.
+<TL;DR: 1–2 sentences — the single most important thing, stated as a direct claim with at least one specific detail>
 
-Then output the exact line "If you only remember 3 things" followed by exactly 3 bullets using "- ".
+If you remember nothing else
+- <the most non-obvious or surprising specific point>
+- <a concrete fact, number, or named technique>
+- <the most actionable thing — specific enough to do today>
 
-No repetition. No hype. No markdown headers, no bold.
+Rules:
+- TL;DR must make a direct claim — not "this video covers X" but the actual conclusion
+- Every bullet must contain a concrete detail from the transcript — no generic observations
+- Bullets must not repeat each other or overlap with the TL;DR
+- No hype, no filler. No markdown headers, no bold.
 
 Stop after the third bullet. Do not add anything else.
 
@@ -27,11 +34,20 @@ Transcript:
 ```prompt
 Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Write a TL;DR of 2–3 sentences.
+<TL;DR: 2–3 sentences — the core argument or finding, stated as direct claims with specific details>
 
-Then output the exact line "If you only remember 5 things" followed by exactly 5 bullets using "- ".
+If you remember nothing else
+- <the most non-obvious or surprising specific point>
+- <a concrete fact, number, or named technique>
+- <a counterintuitive claim or caveat>
+- <the most actionable thing — specific enough to do today>
+- <what this changes or makes obsolete>
 
-No repetition. No hype. No markdown headers, no bold.
+Rules:
+- TL;DR must make direct claims — not "this video covers X" but the actual conclusions
+- Every bullet must contain a concrete detail from the transcript — no generic observations
+- Each bullet should be a distinct insight — no overlap, no repetition of the TL;DR
+- No hype, no filler. No markdown headers, no bold.
 
 Stop after the fifth bullet. Do not add anything else.
 
@@ -46,11 +62,23 @@ Transcript:
 ```prompt
 Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
-Write a TL;DR of 3–4 sentences.
+<TL;DR: 3–4 sentences — the core argument or finding, stated as direct claims with specific details>
 
-Then output the exact line "If you only remember 8 things" followed by exactly 8 bullets using "- ".
+If you remember nothing else
+- <the most non-obvious or surprising specific point>
+- <a concrete fact, number, or named technique>
+- <a counterintuitive claim or caveat>
+- <the most actionable thing — specific enough to do today>
+- <what this changes or makes obsolete>
+- <a risk or failure mode specifically named>
+- <the key condition or context that limits when this applies>
+- <one concrete next step anyone in this field should take>
 
-No repetition. No hype. No markdown headers, no bold.
+Rules:
+- TL;DR must make direct claims — not "this video covers X" but the actual conclusions
+- Every bullet must contain a concrete detail from the transcript — no generic observations
+- Each bullet should be a distinct insight — no overlap, no repetition of the TL;DR
+- No hype, no filler. No markdown headers, no bold.
 
 Stop after the eighth bullet. Do not add anything else.
 
