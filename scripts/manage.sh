@@ -245,27 +245,15 @@ cmd_subscribe() {
   pause
 }
 
-# ── manage transcribe queue ───────────────────────────────────────────────────
-cmd_manage_transcribe_queue() {
-  header "Manage Transcribe Queue"
-
-  local current_url current_name
-  current_url=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | \
-    "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
-  current_name=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | \
-    "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
-
-  if [ -n "$current_url" ]; then
-    section "Current configuration:"
-    dim "Name:  $current_name"
-    dim "URL:   $current_url"
-  fi
+# ── shared: edit transcribe queue URL/options ─────────────────────────────────
+_edit_transcribe_queue() {
+  local current_url="${1:-}" current_name="${2:-}"
 
   section "YouTube playlist URL:"
   local url
   url=$(gum input --value "${current_url}" \
     --placeholder "https://www.youtube.com/playlist?list=PL…" --width 68)
-  [ -z "$url" ] && { warn "Cancelled."; return; }
+  [ -z "$url" ] && { warn "Cancelled."; return 1; }
 
   local name; name=$(fetch_name "$url")
   if [ -z "$name" ]; then
@@ -275,7 +263,7 @@ cmd_manage_transcribe_queue() {
     section "Detected: $name"
     gum confirm "  Use this name?" || name=$(gum input --value "$name" --width 60)
   fi
-  [ -z "$name" ] && { warn "Name is required. Cancelled."; return; }
+  [ -z "$name" ] && { warn "Name is required. Cancelled."; return 1; }
 
   section "Transcript cleanup options:"
   dim "Controls how the raw Parakeet transcript is cleaned before emailing."
@@ -283,11 +271,11 @@ cmd_manage_transcribe_queue() {
 
   local display_items=() selected_display=()
   while IFS= read -r entry; do
-    local ok oe od
-    ok=$(echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['key'])")
-    od=$(echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['description'])")
-    oe=$(echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['enabled'])")
-    local item="$ok — $od"
+    local okey oe od
+    okey=$(echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['key'])")
+    od=$(  echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['description'])")
+    oe=$(  echo "$entry" | "$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read())['enabled'])")
+    local item="$okey — $od"
     display_items+=("$item")
     [ "$oe" = "True" ] && selected_display+=("$item")
   done < <("$PYTHON" "$CONFIG" list-transcribe-options | "$PYTHON" -c "
@@ -316,7 +304,7 @@ for o in json.load(sys.stdin): print(json.dumps(o))
   dim "Name: $name"
   dim "URL:  $url"
   echo ""
-  gum confirm "  Save transcribe queue?" || { warn "Cancelled."; return; }
+  gum confirm "  Save transcribe queue?" || { warn "Cancelled."; return 1; }
 
   "$PYTHON" "$CONFIG" set-queue --type transcribe --name "$name" --url "$url"
   "$PYTHON" "$CONFIG" set-transcribe-options ${opt_args:+--options "${opt_args[@]}"}
@@ -324,27 +312,67 @@ for o in json.load(sys.stdin): print(json.dumps(o))
   pause
 }
 
-# ── manage summarize queue ────────────────────────────────────────────────────
-cmd_manage_summarize_queue() {
-  header "Manage Summarize Queue"
+# ── manage transcribe queue ───────────────────────────────────────────────────
+cmd_manage_transcribe_queue() {
+  while true; do
+    header "Transcribe Queue"
 
-  local current_url current_name
-  current_url=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
-    "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
-  current_name=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
-    "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
+    local current_url current_name
+    current_url=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
+    current_name=$("$PYTHON" "$CONFIG" get-queue --type transcribe 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
 
-  if [ -n "$current_url" ]; then
-    section "Current configuration:"
-    dim "Name:  $current_name"
-    dim "URL:   $current_url"
-  fi
+    echo ""
+    if [ -n "$current_url" ]; then
+      dim "Name:  $current_name"
+      dim "URL:   $current_url"
+    else
+      dim "(not configured)"
+    fi
+    echo ""
+
+    local actions=()
+    if [ -n "$current_url" ]; then
+      actions+=("✏️   Edit URL & options")
+      actions+=("🗑   Remove queue")
+    else
+      actions+=("➕  Set up queue")
+    fi
+    actions+=("←   Back")
+
+    local action
+    action=$(printf '%s\n' "${actions[@]}" | gum choose \
+      --header "  ──────────────────────────────") || return
+
+    case "$action" in
+      "✏️"* | "➕"*)
+        _edit_transcribe_queue "$current_url" "$current_name"
+        ;;
+      "🗑"*)
+        echo ""
+        if gum confirm "  Remove transcribe queue?"; then
+          "$PYTHON" "$CONFIG" clear-queue --type transcribe
+          ok "Transcribe queue removed."
+          pause
+        else
+          warn "Cancelled."
+        fi
+        ;;
+      "←"*) return ;;
+    esac
+  done
+}
+
+# ── shared: edit summarize queue URL/prompts ──────────────────────────────────
+_edit_summarize_queue() {
+  local current_url="${1:-}" current_name="${2:-}"
 
   section "YouTube playlist URL:"
   local url
   url=$(gum input --value "${current_url}" \
     --placeholder "https://www.youtube.com/playlist?list=PL…" --width 68)
-  [ -z "$url" ] && { warn "Cancelled."; return; }
+  [ -z "$url" ] && { warn "Cancelled."; return 1; }
 
   local name; name=$(fetch_name "$url")
   if [ -z "$name" ]; then
@@ -354,7 +382,7 @@ cmd_manage_summarize_queue() {
     section "Detected: $name"
     gum confirm "  Use this name?" || name=$(gum input --value "$name" --width 60)
   fi
-  [ -z "$name" ] && { warn "Name is required. Cancelled."; return; }
+  [ -z "$name" ] && { warn "Name is required. Cancelled."; return 1; }
 
   section "Which prompts should run for this queue?"
   local chosen; chosen=$(pick_prompts "")
@@ -373,12 +401,68 @@ cmd_manage_summarize_queue() {
   dim "URL:     $url"
   dim "Prompts: $pd"
   echo ""
-  gum confirm "  Save summarize queue?" || { warn "Cancelled."; return; }
+  gum confirm "  Save summarize queue?" || { warn "Cancelled."; return 1; }
 
   "$PYTHON" "$CONFIG" set-queue --type summarize --name "$name" --url "$url" \
     ${prompt_args:+--prompts "${prompt_args[@]}"}
   ok "Summarize queue saved: $name"
   pause
+}
+
+# ── manage summarize queue ────────────────────────────────────────────────────
+cmd_manage_summarize_queue() {
+  while true; do
+    header "Summarize Queue"
+
+    local current_url current_name current_prompts
+    current_url=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
+    current_name=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
+    current_prompts=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; p=json.load(sys.stdin).get('prompts') or []; print(', '.join(p) if p else 'all enabled')" \
+      2>/dev/null || echo "all enabled")
+
+    echo ""
+    if [ -n "$current_url" ]; then
+      dim "Name:    $current_name"
+      dim "URL:     $current_url"
+      dim "Prompts: $current_prompts"
+    else
+      dim "(not configured)"
+    fi
+    echo ""
+
+    local actions=()
+    if [ -n "$current_url" ]; then
+      actions+=("✏️   Edit URL & prompts")
+      actions+=("🗑   Remove queue")
+    else
+      actions+=("➕  Set up queue")
+    fi
+    actions+=("←   Back")
+
+    local action
+    action=$(printf '%s\n' "${actions[@]}" | gum choose \
+      --header "  ──────────────────────────────") || return
+
+    case "$action" in
+      "✏️"* | "➕"*)
+        _edit_summarize_queue "$current_url" "$current_name"
+        ;;
+      "🗑"*)
+        echo ""
+        if gum confirm "  Remove summarize queue?"; then
+          "$PYTHON" "$CONFIG" clear-queue --type summarize
+          ok "Summarize queue removed."
+          pause
+        else
+          warn "Cancelled."
+        fi
+        ;;
+      "←"*) return ;;
+    esac
+  done
 }
 
 # ── run now ───────────────────────────────────────────────────────────────────

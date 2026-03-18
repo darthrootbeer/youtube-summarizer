@@ -143,6 +143,17 @@ def cmd_get_queue(args) -> None:
     print(json.dumps(q))
 
 
+def cmd_clear_queue(args) -> None:
+    raw = _read_raw()
+    section_key = f"{args.queue_type}_queue"
+    pattern = r"\n\[" + section_key + r"\][^\[]*"
+    new_raw = re.sub(pattern, "", raw, flags=re.S)
+    if new_raw == raw:
+        print(f"ERROR: [{section_key}] not found", file=sys.stderr)
+        sys.exit(1)
+    _write_raw(new_raw)
+
+
 # ── prompts ───────────────────────────────────────────────────────────────────
 
 def cmd_list_prompts(_args) -> None:
@@ -293,6 +304,9 @@ def main() -> None:
     sq.add_argument("--url", required=True)
     sq.add_argument("--prompts", nargs="*", default=[])
 
+    cq = sub.add_parser("clear-queue")
+    cq.add_argument("--type", dest="queue_type", required=True, choices=["summarize", "transcribe"])
+
     sto = sub.add_parser("set-transcribe-options")
     sto.add_argument("--options", nargs="*", default=[])
 
@@ -303,6 +317,7 @@ def main() -> None:
         "list-transcribe-options":   cmd_list_transcribe_options,
         "get-subscription-prompts":  cmd_get_subscription_prompts,
         "get-queue":                 cmd_get_queue,
+        "clear-queue":               cmd_clear_queue,
         "add-subscription":          cmd_add_subscription,
         "remove-subscription":       cmd_remove_subscription,
         "edit-subscription-prompts": cmd_edit_subscription_prompts,
