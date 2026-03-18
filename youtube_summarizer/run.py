@@ -203,17 +203,30 @@ def run_once(limit: int = 10) -> int:
                 # Dry-run means: don't email + don't mark as seen.
                 # We still fetch real transcripts/transcriptions so QA runs are meaningful.
                 log.debug("  fetching transcript via %s ...", settings.transcribe_backend)
-                transcript, transcript_stats = _get_transcript(
-                    video_id=v.video_id,
-                    video_url=v.url,
-                    transcribe_backend=settings.transcribe_backend,
-                    parakeet_model=settings.parakeet_model,
-                    whisper_cpp_model=settings.whisper_cpp_model,
-                    ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
-                    ytdlp_cookies_file=settings.ytdlp_cookies_file,
-                    root=root,
-                    prefer_youtube=False,
-                )
+                try:
+                    transcript, transcript_stats = _get_transcript(
+                        video_id=v.video_id,
+                        video_url=v.url,
+                        transcribe_backend=settings.transcribe_backend,
+                        parakeet_model=settings.parakeet_model,
+                        whisper_cpp_model=settings.whisper_cpp_model,
+                        ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
+                        ytdlp_cookies_file=settings.ytdlp_cookies_file,
+                        root=root,
+                        prefer_youtube=False,
+                    )
+                except RuntimeError as e:
+                    log.warning("  skipping '%s' — transcript unavailable: %s", v.title, e)
+                    if not settings.dry_run:
+                        db.mark_seen(conn, db.SeenVideo(
+                            video_id=seen_id,
+                            video_url=v.url,
+                            channel_name=effective_channel_name,
+                            video_title=v.title,
+                            published_at=v.published_at,
+                        ))
+                    remaining -= 1
+                    continue
                 log.debug("  transcript: source=%s chars=%d download=%s transcribe=%s",
                           transcript.source, len(transcript.text or ""),
                           _fmt_ms(transcript_stats.audio_download_ms),
