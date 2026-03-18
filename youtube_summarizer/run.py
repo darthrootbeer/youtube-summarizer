@@ -166,9 +166,11 @@ def run_once(limit: int = 10) -> int:
                 continue
 
             # Determine which prompts to run for this channel.
-            # If ch.prompt is set, filter to that one key only; otherwise use all enabled.
-            if ch.prompt:
-                channel_prompts = [p for p in all_enabled_prompts if p.key == ch.prompt]
+            # If ch.prompts is set, filter to those keys only; otherwise use all enabled.
+            if ch.prompts:
+                channel_prompts = [p for p in all_enabled_prompts if p.key in ch.prompts]
+                # Preserve the order specified in channels.toml
+                channel_prompts.sort(key=lambda p: ch.prompts.index(p.key))
                 if not channel_prompts:
                     channel_prompts = all_enabled_prompts
             else:

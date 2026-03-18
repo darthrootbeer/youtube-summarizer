@@ -13,7 +13,7 @@ class Channel:
     url: str
     mode: str  # "summarize" | "transcribe"
     source_type: str  # "subscription" | "summarize_queue" | "transcribe_queue"
-    prompt: str | None = None  # if set, only this prompt key runs (else all enabled prompts)
+    prompts: list | None = None  # if set, only these prompt keys run (else all enabled prompts)
 
 
 @dataclass
@@ -54,6 +54,27 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _parse_prompts_field(item: dict) -> list | None:
+    """
+    Parse the prompts field from a channel config item.
+    Supports:
+      prompts = ["default", "glossary"]   # new list form
+      prompt  = "default"                 # legacy single-string form
+    Returns None if neither is set (meaning: run all enabled prompts).
+    """
+    if "prompts" in item:
+        val = item["prompts"]
+        if isinstance(val, list):
+            keys = [str(k).strip() for k in val if str(k).strip()]
+            return keys or None
+        if isinstance(val, str) and val.strip():
+            return [val.strip()]
+    if "prompt" in item:
+        val = str(item["prompt"]).strip()
+        return [val] if val else None
+    return None
+
+
 def load_channels(path: Path | None = None) -> list[Channel]:
     cfg_path = path or (repo_root() / "config" / "channels.toml")
     raw = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
@@ -65,7 +86,8 @@ def load_channels(path: Path | None = None) -> list[Channel]:
         if not url:
             continue
         name = str(item.get("name", "")).strip() or None
-        out.append(Channel(name=name, url=url, mode="summarize", source_type="subscription"))
+        prompts = _parse_prompts_field(item)
+        out.append(Channel(name=name, url=url, mode="summarize", source_type="subscription", prompts=prompts))
 
     # Summarize queue — personal playlist, drain to empty (summarize mode)
     sq = raw.get("summarize_queue")
@@ -73,8 +95,8 @@ def load_channels(path: Path | None = None) -> list[Channel]:
         url = str(sq.get("url", "")).strip()
         if url:
             name = str(sq.get("name", "")).strip() or None
-            prompt = str(sq.get("prompt", "")).strip() or None
-            out.append(Channel(name=name, url=url, mode="summarize", source_type="summarize_queue", prompt=prompt))
+            prompts = _parse_prompts_field(sq)
+            out.append(Channel(name=name, url=url, mode="summarize", source_type="summarize_queue", prompts=prompts))
 
     # Transcribe queue — personal playlist, drain to empty (transcribe mode)
     tq = raw.get("transcribe_queue")

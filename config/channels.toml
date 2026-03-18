@@ -4,9 +4,11 @@
 #
 # ─── HOW PROMPTS WORK ─────────────────────────────────────────────────────────
 #
-#   Summarize mode  →  config/process.md
-#     All prompts with `enabled: true` in that file run on every video.
-#     You can add/remove/enable/disable prompts there.
+#   Summarize mode  →  config/prompts/*.md
+#     All prompts with `enabled: true` run on every video by default.
+#
+#     To run specific prompts for a feed, add a `prompts` list:
+#       prompts = ["default", "glossary"]
 #
 #   Transcribe mode →  config/transcribe.md
 #     Cleans up the raw transcript for reading. Does NOT summarize.
@@ -50,9 +52,9 @@ url  = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [summarize_queue]
-name   = "SUMMARIZE playlist (queue)"
-url    = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhtDgXGGeaMm274Uj_7TCjHq"
-prompt = "default"
+name    = "SUMMARIZE playlist (queue)"
+url     = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhtDgXGGeaMm274Uj_7TCjHq"
+prompts = ["default"]
 
 
 # ─── TRANSCRIBE QUEUE ─────────────────────────────────────────────────────────
