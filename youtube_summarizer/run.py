@@ -1047,26 +1047,30 @@ def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | Non
         core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
         return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
 
-    prompt = f"""Fix the formatting of this summary so it follows the rules exactly.
+    prompt = f”””Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no intro, no preamble, no explanation.
+
+REQUIRED FORMAT:
+<paragraph 1>
+
+<paragraph 2>
+
+Key takeaways
+- <point 1>
+- <point 2>
+- <point 3>
 
 Rules:
-- 170–230 words total (aim for ~200)
-- Do not mention the speaker, presenter, or “this video”.
-- No markdown headers, no numbered lists, no "Conclusion"
-- Exactly ONE "Key takeaways" line followed by exactly 3 bullets
-- Bullets must start with "- "
-- Do not repeat information
+- Plain prose paragraphs only (no bullets, no bold, no headers in the paragraphs)
+- The line “Key takeaways” must appear exactly as written, alone on its line
+- Exactly 3 bullets after “Key takeaways”, each starting with “- “
+- Nothing after the 3rd bullet
+- Do NOT start with “Here is”, “Here's”, or any preamble
 
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
-
-Current summary:
-\"\"\"
+Current (malformed) summary:
+\”\”\”
 {s}
-\"\"\"
-"""
+\”\”\”
+“””
     try:
         res = subprocess.run(
             ["ollama", "run", ollama_model],
