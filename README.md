@@ -91,8 +91,8 @@ By default, all globally-enabled prompts run for every subscription. To override
 
 ```toml
 [[subscriptions]]
-name    = "AI News & Strategy Daily | Nate B Jones"
-url     = "https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ"
+name    = "My Channel"
+url     = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx"
 prompts = ["default", "glossary"]
 ```
 
@@ -135,7 +135,9 @@ python -m youtube_summarizer run --dry-run
 ## Scheduler (automatic, runs every 15 min)
 
 ```bash
-# Load
+# Install (run once from the project directory)
+sed "s|__PROJECT_PATH__|$(pwd)|g" launchd/com.youtube-summarizer.plist \
+  > ~/Library/LaunchAgents/com.youtube-summarizer.plist
 launchctl load ~/Library/LaunchAgents/com.youtube-summarizer.plist
 
 # Reload after config changes

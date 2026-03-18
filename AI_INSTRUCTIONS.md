@@ -23,6 +23,15 @@ Every prompt template must include `{transcript}`.
 2. Set `enabled: true` or `false`.
 3. No code changes needed — the loader picks it up automatically.
 
+See `config/prompts/README.md` for the full authoring guide, including qwen2.5:14b tuning techniques.
+
+**Key rules when writing prompts for qwen2.5:14b:**
+- Open every prompt with: `Output ONLY ... — no preamble, no "Here is...", no sign-off.`
+- Show the exact output shape as a template, not just rules in prose.
+- Use "exactly N" for counts (not "N–M ranges" when precision matters).
+- End every prompt with: `Stop after [last element]. Do not add anything else.`
+- Name section labels explicitly so the model outputs the right text.
+
 ## Channel config
 
 `config/channels.toml` — three sections:
@@ -49,12 +58,13 @@ Do not use the old `prompt = "default"` single-string form.
 ## Email formatting
 
 When changing email layout, optimise for:
-- Fast scanning (headline → summary → link)
-- Clean typography, no visual clutter
-- Works well in Gmail
+- Fast scanning (headline → thumbnail → summary → link)
+- Clean typography, intentional hierarchy, no visual clutter
+- Works well in Gmail (supports `<style>` blocks; no CSS Grid/Flexbox needed)
 
 The HTML template is `youtube_summarizer/templates/email.html.j2`.
 Summary text is converted to HTML by `_format_summary_html()` in `run.py`.
+Thumbnail URL is deterministic: `https://img.youtube.com/vi/{video_id}/hqdefault.jpg`.
 
 ## Config loading
 

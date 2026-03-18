@@ -20,9 +20,13 @@
 - [x] `manage.sh` TUI — subscribe, manage queues, run, status, settings (requires `gum`)
 - [x] `scripts/_config.py` — Python helper for all TOML read/write
 - [x] action_checklist uses ☐ checkbox emoji for action items
+- [x] Thumbnail in email header (hqdefault.jpg, deterministic URL, no extra network call)
+- [x] Email redesign — premium newsletter look (gradient header, accent cards, depth shadows)
+- [x] Prompt fine-tuning for qwen2.5:14b (output-only directives, format examples, hard stops)
+- [x] `config/prompts/README.md` — custom prompt authoring guide
+- [x] Repo sanitized for public release (no personal URLs/paths in tracked files)
 
 ## Backlog
 
-- [ ] Thumbnail in email header
 - [ ] Re-check yt-dlp n-challenge issue once upstream fixes land (see PROJECT_STATUS.md)
 - [ ] `manage.sh` — restart service after config changes
