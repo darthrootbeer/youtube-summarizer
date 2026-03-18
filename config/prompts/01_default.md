@@ -13,7 +13,7 @@ Begin your response with the first word of the intro sentence.
 OUTPUT FORMAT:
 <1 sentence that introduces the topic>
 
-<~100 word summary in plain prose>
+<paragraph of ~100 words>
 
 Key takeaways
 - <takeaway 1>
@@ -24,12 +24,12 @@ Key takeaways
 
 Rules:
 - 7th grade reading level — short sentences, plain words
-- First line: exactly 1 sentence introducing the topic
-- Then 1–2 paragraphs totalling ~100 words (no bullets in paragraphs)
+- First sentence names the topic directly — do NOT open with "During", "In this video", "In an engaging", or any meta-description of the video
+- Write in third person — never use "you", "your", "we", "I", "the host", or "the speaker"
+- After the intro sentence write exactly 1 prose paragraph (~100 words, no bullets)
 - Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 3 bullets starting with "- "
 - Then exactly 1 wrap-up sentence — stop immediately after it
-- Do NOT mention the speaker, host, or "this video" — state ideas directly
 - Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
@@ -48,7 +48,9 @@ Begin your response with the first word of the intro sentence.
 OUTPUT FORMAT:
 <1 sentence that introduces the topic>
 
-<~200 word summary in plain prose>
+<paragraph 1 — ~100 words>
+
+<paragraph 2 — ~100 words>
 
 Key takeaways
 - <takeaway 1>
@@ -61,12 +63,12 @@ Key takeaways
 
 Rules:
 - 7th grade reading level — short sentences, plain words
-- First line: exactly 1 sentence introducing the topic
-- Then 1–3 paragraphs totalling ~200 words (no bullets in paragraphs)
+- First sentence names the topic directly — do NOT open with "During", "In this video", "In an engaging", or any meta-description of the video
+- Write in third person — never use "you", "your", "we", "I", "the host", or "the speaker"
+- After the intro sentence write exactly 2 prose paragraphs (~100 words each, no bullets)
 - Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 5 bullets starting with "- "
 - Then exactly 1–2 wrap-up sentences — stop immediately after them
-- Do NOT mention the speaker, host, or "this video" — state ideas directly
 - Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
@@ -85,7 +87,11 @@ Begin your response with the first word of the intro sentence.
 OUTPUT FORMAT:
 <1 sentence that introduces the topic>
 
-<~300 word summary in plain prose>
+<paragraph 1 — ~100 words>
+
+<paragraph 2 — ~100 words>
+
+<paragraph 3 — ~100 words>
 
 Key takeaways
 - <takeaway 1>
@@ -101,12 +107,12 @@ Key takeaways
 
 Rules:
 - 7th grade reading level — short sentences, plain words
-- First line: exactly 1 sentence introducing the topic
-- Then 2–4 paragraphs totalling ~300 words (no bullets in paragraphs)
+- First sentence names the topic directly — do NOT open with "During", "In this video", "In an engaging", or any meta-description of the video
+- Write in third person — never use "you", "your", "we", "I", "the host", or "the speaker"
+- After the intro sentence write exactly 3 prose paragraphs (~100 words each, no bullets) — do NOT jump straight to Key takeaways
 - Then the exact line "Key takeaways" (nothing else on that line)
 - Then exactly 8 bullets starting with "- "
 - Then exactly 2–3 wrap-up sentences — stop immediately after them
-- Do NOT mention the speaker, host, or "this video" — state ideas directly
 - Do NOT use markdown headers, bold, or numbered lists
 
 Transcript:
