@@ -173,7 +173,7 @@ def run_once(limit: int = 10) -> int:
                     ytdlp_cookies_from_browser=settings.ytdlp_cookies_from_browser,
                     ytdlp_cookies_file=settings.ytdlp_cookies_file,
                     root=root,
-                    prefer_youtube=(mode != "transcribe"),
+                    prefer_youtube=False,
                 )
                 # Build email sections
                 t_sum_total = time.perf_counter()
