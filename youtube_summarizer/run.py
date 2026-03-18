@@ -1047,23 +1047,25 @@ def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | Non
         core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
         return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
 
-    prompt = f”””Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no intro, no preamble, no explanation.
+    prompt = f”””Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no preamble, no explanation.
 
 REQUIRED FORMAT:
-<paragraph 1>
+<1 sentence intro>
 
-<paragraph 2>
+<prose paragraphs, ~200 words, 7th grade reading level>
 
 Key takeaways
 - <point 1>
 - <point 2>
 - <point 3>
 
+<1 sentence wrap-up>
+
 Rules:
 - Plain prose paragraphs only (no bullets, no bold, no headers in the paragraphs)
 - The line “Key takeaways” must appear exactly as written, alone on its line
 - Exactly 3 bullets after “Key takeaways”, each starting with “- “
-- Nothing after the 3rd bullet
+- End with exactly 1 wrap-up sentence after the bullets
 - Do NOT start with “Here is”, “Here's”, or any preamble
 
 Current (malformed) summary:
@@ -1113,15 +1115,22 @@ def _truncate_key_takeaways_to_three(text: str) -> str:
     before = text[: m.start()].rstrip()
     after = text[m.end() :].lstrip()
     bullets = []
+    remaining_lines = []
+    collecting_remaining = False
     for ln in after.splitlines():
         line = ln.strip()
-        if line.startswith("- "):
+        if not collecting_remaining and line.startswith("- "):
             bullets.append(line)
-            continue
-        if bullets:
-            break
+        elif bullets:
+            # Everything after the bullet block is the wrap-up
+            collecting_remaining = True
+            if line:
+                remaining_lines.append(line)
     bullets = bullets[:3]
-    return "\n\n".join([before, "Key takeaways", "\n".join(bullets)]).strip()
+    parts = [before, "Key takeaways", "\n".join(bullets)]
+    if remaining_lines:
+        parts.append(" ".join(remaining_lines))
+    return "\n\n".join(parts).strip()
 
 
 def _fetch_videos_via_ytdlp_playlist(

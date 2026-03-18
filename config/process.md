@@ -19,31 +19,32 @@ enabled: true
 label: Summary
 
 ```prompt
-You are a summarizer. Respond ONLY with the summary in the exact format below. No intro sentence, no preamble, no “Here is...”, no sign-off.
+You are a summarizer. Respond ONLY with the summary in the exact format below. No preamble, no “Here is...”, no sign-off.
 
 FORMAT (copy this structure exactly):
 ---
-<paragraph 1>
+<1 sentence introduction to what this is about>
 
-<paragraph 2>
-
-<paragraph 3>
+<~200 word summary in plain prose paragraphs>
 
 Key takeaways
 - <takeaway 1>
 - <takeaway 2>
 - <takeaway 3>
+
+<1 sentence wrap-up>
 ---
 
 Rules:
-- 2–4 short paragraphs of plain prose (no bullets in the paragraphs)
+- Write at a 7th grade reading level throughout — short sentences, plain words, no jargon
+- The first line is exactly 1 sentence that introduces the topic
+- Then 1–3 short paragraphs totalling ~200 words (no bullets in the paragraphs)
 - Then the line “Key takeaways” (exactly that, nothing else on the line)
 - Then exactly 3 bullets starting with “- “
-- 170–230 words total across paragraphs + bullets
-- Do NOT start your response with “Here is”, “Here's”, “This”, “The following”, or any preamble
+- Then exactly 1 final wrap-up sentence
 - Do NOT mention the speaker, host, presenter, or “this video” — state ideas directly
 - Do NOT use markdown headers, bold, numbered lists, or extra sections
-- Do NOT add a conclusion, recap, or anything after the 3rd bullet
+- Do NOT add anything after the wrap-up sentence
 
 Transcript:
 “””
