@@ -996,10 +996,36 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
         raw = re.sub(r"\s{2,}", " ", raw).strip()
 
     if opts.get("remove_fillers", True):
-        # Remove standalone filler tokens.
+        # Remove standalone filler tokens (single-word).
         raw = re.sub(r"(?i)\b(um+|uh+|er+|ah+|eh+|hmm+)\b", "", raw)
+        # Remove multi-word hedge phrases used as fillers.
+        raw = re.sub(r"(?i)\b(kind of|sort of|you know|i mean)\b", "", raw)
         # Remove obvious double-word stutters: "the the" -> "the"
         raw = re.sub(r"(?i)\b(\w+)(\s+\1\b)+", r"\1", raw)
+        # Clean up orphaned commas left after filler removal (e.g. "Um, foo" → ", foo" → "foo")
+        raw = re.sub(r",\s*,+", ",", raw)              # double commas: ", ," → ","
+        raw = re.sub(r"(?<=[.!?])\s*,\s*", " ", raw)  # ". , foo" → ". foo"
+        raw = re.sub(r"^\s*,\s*", "", raw)             # leading ", foo" → "foo"
+        # Capitalize first letter after sentence-end punctuation (filler removal can leave lowercase starts)
+        raw = re.sub(r"(?<=[.!?])\s+([a-z])", lambda m: " " + m.group(1).upper(), raw)
+        raw = re.sub(r"\s{2,}", " ", raw).strip()
+
+    if opts.get("split_long_clauses", False):
+        # Split long compound sentences at ", and " / ", but " where both sides
+        # are substantial (>= 60 chars each).  Short enumerations like
+        # "cats, dogs, and birds" are left alone.
+        def _maybe_split_clause(m: re.Match) -> str:
+            before_start = m.string.rfind(". ", 0, m.start())
+            before_start = before_start + 2 if before_start >= 0 else 0
+            clause_before = m.string[before_start : m.start()]
+            clause_after = m.string[m.end() :]
+            next_end = clause_after.find(". ")
+            clause_after_preview = clause_after if next_end < 0 else clause_after[:next_end]
+            if len(clause_before.strip()) >= 60 and len(clause_after_preview.strip()) >= 40:
+                return f". {m.group(1).capitalize()} "
+            return m.group(0)
+
+        raw = re.sub(r",\s+(and|but)\s+", _maybe_split_clause, raw)
         raw = re.sub(r"\s{2,}", " ", raw).strip()
 
     if len(raw) <= 1200:
@@ -1025,6 +1051,22 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
         out = re.sub(r"(?m)(^.*\?\s*$)", r"\n\1\n", out)
         out = re.sub(r"\n{3,}", "\n\n", out).strip()
 
+    if opts.get("qa_paragraph_breaks", False):
+        # Detect Q&A intro patterns and force a paragraph break before them.
+        # Matches: "First question", "Next question", "Final question",
+        #          "[Name] writes," "[Name] W. writes," "Question from [Name]"
+        out = re.sub(
+            r"(?i)(?<!\n\n)(?<!\n)(\b(?:first|second|third|fourth|fifth|next|last|final|closing)\s+question\b)",
+            r"\n\n\1",
+            out,
+        )
+        out = re.sub(
+            r"(?i)(?<!\n\n)(?<!\n)(\b[A-Z][a-z]+(?:\s+[A-Z][\w.]*)?\s+(?:writes?|asks?),)",
+            r"\n\n\1",
+            out,
+        )
+        out = re.sub(r"\n{3,}", "\n\n", out).strip()
+
     return out
 
 
@@ -1047,7 +1089,7 @@ def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | Non
         core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
         return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
 
-    prompt = f”””Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no preamble, no explanation.
+    prompt = f"""Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no preamble, no explanation.
 
 REQUIRED FORMAT:
 <1 sentence intro>
@@ -1063,16 +1105,16 @@ Key takeaways
 
 Rules:
 - Plain prose paragraphs only (no bullets, no bold, no headers in the paragraphs)
-- The line “Key takeaways” must appear exactly as written, alone on its line
-- Exactly 3 bullets after “Key takeaways”, each starting with “- “
+- The line "Key takeaways" must appear exactly as written, alone on its line
+- Exactly 3 bullets after "Key takeaways", each starting with "- "
 - End with exactly 1 wrap-up sentence after the bullets
-- Do NOT start with “Here is”, “Here's”, or any preamble
+- Do NOT start with "Here is", "Here's", or any preamble
 
 Current (malformed) summary:
-\”\”\”
+\"\"\"
 {s}
-\”\”\”
-“””
+\"\"\"
+"""
     try:
         res = subprocess.run(
             ["ollama", "run", ollama_model],
