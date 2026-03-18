@@ -1,75 +1,86 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ subject }}</title>
+    <style>
+      /* Gmail and Apple Mail support <style> blocks */
+      p { margin: 0 0 10px 0; }
+      ul { margin: 4px 0 12px 0; padding: 0 0 0 0; list-style: none; }
+      li { margin: 0 0 7px 0; padding-left: 18px; position: relative; }
+      li::before { content: "–"; position: absolute; left: 0; color: #7c85c0; font-weight: 600; }
+    </style>
   </head>
-  <body style="margin:0;padding:0;background:#f6f7fb;">
-    <div style="max-width:720px;margin:0 auto;padding:28px 16px;">
-      <div style="background:#ffffff;border:1px solid #e7e9f2;border-radius:14px;overflow:hidden;">
+  <body style="margin:0;padding:0;background:#eaecf5;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
-        <!-- Header -->
-        <div style="padding:18px 20px;background:#121526;color:#ffffff;">
-          <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.6; margin-bottom:4px;">
-            {{ source_label }} · {{ source_name }}
+    <!-- Outer wrapper -->
+    <div style="max-width:680px;margin:0 auto;padding:36px 16px 28px;">
+
+      <!-- Card -->
+      <div style="background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(15,18,45,0.12),0 2px 6px rgba(15,18,45,0.06);">
+
+        <!-- Header: deep gradient -->
+        <div style="background:linear-gradient(140deg,#0d1021 0%,#1b2048 60%,#232d6a 100%);padding:26px 30px 22px;">
+          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:12px;font-weight:500;">
+            {{ source_label }}&ensp;&middot;&ensp;{{ source_name }}
           </div>
-          <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:20px; font-weight:700; line-height:1.25;">
+          <div style="font-size:23px;font-weight:700;color:#ffffff;line-height:1.28;letter-spacing:-.02em;">
             {{ video_title }}
           </div>
         </div>
 
         <!-- Thumbnail -->
         {% if thumbnail_url %}
-        <a href="{{ video_url }}" style="display:block; line-height:0;">
+        <a href="{{ video_url }}" style="display:block;line-height:0;border:0;outline:0;">
           <img src="{{ thumbnail_url }}"
                alt="{{ video_title }}"
                width="100%"
-               style="display:block; border:0; max-height:360px; object-fit:cover;" />
+               style="display:block;border:0;max-height:340px;width:100%;object-fit:cover;" />
         </a>
         {% endif %}
 
-        <!-- Video meta -->
-        <div style="padding:12px 20px; background:#f9fafc; border-bottom:1px solid #e7e9f2;">
-          <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:13px; color:#3b3f55; line-height:1.7;">
-            <div><strong>Channel:</strong> {{ source_name }}</div>
+        <!-- Video meta strip -->
+        <div style="padding:13px 30px;background:#f2f3fa;border-bottom:1px solid #e0e3f0;">
+          <span style="font-size:12.5px;color:#4a4f70;line-height:1.5;">
+            <span style="font-weight:600;color:#22253d;">{{ source_name }}</span>
             {% if published_at_display %}
-            <div><strong>Published:</strong> {{ published_at_display }}</div>
+            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<span>{{ published_at_display }}</span>
             {% endif %}
-            <div>
-              <strong>URL:</strong>
-              <a href="{{ video_url }}" style="color:#2b59ff; text-decoration:none;">{{ video_url }}</a>
-            </div>
-          </div>
+            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<a href="{{ video_url }}" style="color:#4b6cf6;text-decoration:none;font-weight:500;">Watch&nbsp;video&nbsp;&#8599;</a>
+          </span>
         </div>
 
         <!-- Content -->
-        <div style="padding:18px 20px;">
-          <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:14px; color:#1a1d2a; line-height:1.6;">
+        <div style="padding:28px 30px 24px;">
 
-            {% for s in sections %}
-            <div style="margin:16px 0; padding:14px 14px; border:1px solid #eef0f7; border-radius:12px; background:#fbfbfe;">
-              <div style="font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#6b6f85; margin-bottom:8px;">
-                {{ s.label }}
-              </div>
-              <div>{{ s.html }}</div>
-            </div>
-            {% if not loop.last %}
-            <div style="border-top:1px solid #eef0f7; margin:14px 0;"></div>
-            {% endif %}
-            {% endfor %}
+          {% for s in sections %}
+          <!-- Section card -->
+          <div style="margin-bottom:22px;border-radius:13px;border:1px solid #dfe2f3;overflow:hidden;">
 
-            <div style="font-size:12px; color:#6b6f85; margin-top:14px;">
-              Transcript source: <strong style="color:#3b3f55;">{{ transcript_source }}</strong>
+            <!-- Label bar -->
+            <div style="padding:9px 18px;background:linear-gradient(90deg,#f0f2fc 0%,#f5f6fd 100%);border-bottom:1px solid #dfe2f3;">
+              <span style="font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#4b6cf6;">{{ s.label }}</span>
             </div>
 
-            {% if beta_stats %}
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid #eef0f7; font-size:12px; color:#6b6f85;">
-              <div style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#6b6f85; margin-bottom:6px;">
-                Beta stats
-              </div>
-              <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; white-space:pre-wrap; line-height:1.45;">
-summary_id: {{ beta_stats.summary_id }}
+            <!-- Body -->
+            <div style="padding:18px 20px;background:#fafafd;font-size:14px;color:#1e2138;line-height:1.68;">
+              {{ s.html }}
+            </div>
+
+          </div>
+          {% endfor %}
+
+          <!-- Transcript source -->
+          <div style="font-size:11px;color:#a0a6c8;letter-spacing:.03em;margin-top:2px;">
+            Transcript:&nbsp;<strong style="color:#7178a0;font-weight:600;">{{ transcript_source }}</strong>
+          </div>
+
+          <!-- Beta stats -->
+          {% if beta_stats %}
+          <div style="margin-top:22px;padding:14px 18px;border:1px solid #e0e3f0;border-radius:11px;background:#f8f9fc;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#a0a6c8;margin-bottom:10px;">Debug stats</div>
+            <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;color:#7178a0;white-space:pre-wrap;line-height:1.55;">summary_id: {{ beta_stats.summary_id }}
 video_id: {{ beta_stats.video_id }}
 transcript_source: {{ beta_stats.transcript_source }}
 enabled_prompts: {{ beta_stats.enabled_prompts or "n/a" }}
@@ -89,17 +100,18 @@ email_send_s: {{ beta_stats.email_send_s or "n/a" }}
 total_before_send_s: {{ beta_stats.total_before_send_s or "n/a" }}
 total_to_send_s: {{ beta_stats.total_to_send_s or "n/a" }}
 total_processing_s: {{ beta_stats.total_processing_s or "n/a" }}
-qa_notes: {{ beta_stats.qa_notes or "" }}
-              </div>
-            </div>
-            {% endif %}
+qa_notes: {{ beta_stats.qa_notes or "" }}</div>
           </div>
+          {% endif %}
+
         </div>
       </div>
 
-      <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; font-size:12px; color:#7c8096; margin-top:14px; text-align:center;">
-        Sent by YouTube Summarizer
+      <!-- Footer -->
+      <div style="text-align:center;margin-top:20px;">
+        <span style="font-size:11px;color:#a0a6c8;letter-spacing:.05em;text-transform:uppercase;font-weight:500;">YouTube Summarizer</span>
       </div>
+
     </div>
   </body>
 </html>
