@@ -747,23 +747,52 @@ cmd_settings() {
   pause
 }
 
-# ── main menu (dynamic — subscriptions listed inline) ─────────────────────────
-main() {
+# ── manage subscriptions screen ───────────────────────────────────────────────
+cmd_manage_subscriptions() {
   while true; do
-    local status; status=$(live_status)
-    header "Setup & Management" "$status"
+    header "Subscriptions"
 
-    # Build item list dynamically
     local items=()
     items+=("➕  Add subscription")
 
-    # One item per subscription
     while IFS=$'\t' read -r sub_name sub_prompts; do
       [ -z "$sub_name" ] && continue
       items+=("📺  $sub_name  ·  $sub_prompts")
     done < <("$PYTHON" "$CONFIG" main-menu-subs 2>/dev/null || true)
 
-    # Queues with current state
+    items+=("←   Back")
+
+    local choice
+    choice=$(printf '%s\n' "${items[@]}" | gum choose --height 20) || return
+
+    case "$choice" in
+      "➕"*)
+        cmd_subscribe
+        ;;
+      "📺"*)
+        local sub_name
+        sub_name=$(echo "$choice" | sed 's/^📺  //' | sed 's/  ·  .*//')
+        cmd_subscription_detail "$sub_name"
+        ;;
+      "←"*) return ;;
+    esac
+  done
+}
+
+# ── main menu ─────────────────────────────────────────────────────────────────
+main() {
+  while true; do
+    local status; status=$(live_status)
+    header "Setup & Management" "$status"
+
+    # Subscription count for label
+    local sub_count
+    sub_count=$("$PYTHON" "$CONFIG" list-subscriptions 2>/dev/null | \
+      "$PYTHON" -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+    local sub_label
+    [ "$sub_count" = "0" ] && sub_label="none" || sub_label="$sub_count configured"
+
+    # Queue labels
     local sq_label tq_label
     sq_label=$("$PYTHON" "$CONFIG" get-queue --type summarize 2>/dev/null | \
       "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d['name'] if d.get('url') else 'not configured')" \
@@ -772,44 +801,24 @@ main() {
       "$PYTHON" -c "import json,sys; d=json.load(sys.stdin); print(d['name'] if d.get('url') else 'not configured')" \
       2>/dev/null || echo "not configured")
 
-    items+=("📋  Summarize queue  ·  $sq_label")
-    items+=("📼  Transcribe queue  ·  $tq_label")
-    items+=("▶️   Run now")
-    items+=("📊  Status")
-    items+=("🔧  Settings")
-    items+=("╌╌  Exit")
-
     local choice
-    choice=$(printf '%s\n' "${items[@]}" | gum choose --height 20) || exit 0
+    choice=$(gum choose --height 20 \
+      "📺  Subscriptions  ·  $sub_label" \
+      "📋  Summarize queue  ·  $sq_label" \
+      "📼  Transcribe queue  ·  $tq_label" \
+      "▶️   Run now" \
+      "📊  Status" \
+      "🔧  Settings" \
+      "╌╌  Exit") || exit 0
 
     case "$choice" in
-      "➕"*)
-        cmd_subscribe
-        ;;
-      "📺"*)
-        # Extract subscription name (everything between "📺  " and "  ·  ")
-        local sub_name
-        sub_name=$(echo "$choice" | sed 's/^📺  //' | sed 's/  ·  .*//')
-        cmd_subscription_detail "$sub_name"
-        ;;
-      "📋"*)
-        cmd_manage_summarize_queue
-        ;;
-      "📼"*)
-        cmd_manage_transcribe_queue
-        ;;
-      "▶️"*)
-        cmd_run_now
-        ;;
-      "📊"*)
-        cmd_status
-        ;;
-      "🔧"*)
-        cmd_settings
-        ;;
-      "╌╌"*)
-        exit 0
-        ;;
+      "📺"*)  cmd_manage_subscriptions ;;
+      "📋"*)  cmd_manage_summarize_queue ;;
+      "📼"*)  cmd_manage_transcribe_queue ;;
+      "▶️"*)  cmd_run_now ;;
+      "📊"*)  cmd_status ;;
+      "🔧"*)  cmd_settings ;;
+      "╌╌"*)  exit 0 ;;
     esac
   done
 }
