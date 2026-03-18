@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.0] — 2026-03-18
+
+### Added
+- `manage.sh` symlink at repo root for discoverability (points to `scripts/manage.sh`)
+- Management script menu table, email subjects table, and known yt-dlp issue added to README
+
+### Changed
+- `CLAUDE.md` now consolidates all AI/contributor instructions (merged from `AI_INSTRUCTIONS.md`)
+- README Docs section updated — `PROJECT_STATUS.md` removed, `config/prompts/README.md` added
+
+### Removed
+- `config/prompts.toml` — superseded by `config/prompts/` directory (loader never reached it)
+- `config/process.md` — superseded by `config/prompts/` directory
+- `AI_INSTRUCTIONS.md` — content merged into `CLAUDE.md`
+- `PROJECT_STATUS.md` — content absorbed into README and ARCHITECTURE
+- `.cursorrules` — redundant with `CLAUDE.md`
+
+---
+
 ## [1.0.1] — 2026-03-18
 
 ### Changed
@@ -46,5 +65,6 @@ First public release.
 ---
 
 <!-- Links -->
+[1.1.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/darthrootbeer/youtube-summarizer/releases/tag/v1.0.0

@@ -126,6 +126,24 @@ To change the global default for a prompt, edit `enabled:` in its file under `co
 
 ---
 
+## Management script
+
+The interactive TUI handles all setup and ongoing management:
+
+```bash
+./manage.sh   # root symlink — or: ./scripts/manage.sh
+```
+
+| Option | What it does |
+|---|---|
+| Subscribe | Add a channel/playlist, pick per-feed prompts |
+| Add summarize queue | Set summarize playlist + prompts |
+| Add transcribe queue | Set transcribe playlist + cleanup options |
+| Manage subscriptions | List, remove, or edit per-feed prompts |
+| Run now | Manual trigger (normal or dry-run) |
+| Service status | launchd state, DB stats, recent logs |
+| Settings | Guided `.env` setup |
+
 ## Running
 
 ```bash
@@ -135,10 +153,15 @@ python -m youtube_summarizer run
 
 # Dry run (no emails, no DB writes)
 python -m youtube_summarizer run --dry-run
-
-# Or use the management script
-./scripts/manage.sh   # → "Run now"
 ```
+
+## Email subjects
+
+| Source type | Subject format |
+|---|---|
+| Subscription | `[YT Summary] [SUB] Channel — Video Title` |
+| Summarize queue | `[YT Summary] Video Title` |
+| Transcribe queue | `[YT Summary] [TRANSCRIPTION] Video Title` |
 
 ## Scheduler (automatic, runs every 15 min)
 
@@ -157,9 +180,16 @@ Logs: `/tmp/youtube-summarizer.out.log` and `/tmp/youtube-summarizer.err.log`
 
 ---
 
+## Known issues
+
+**yt-dlp "n challenge" errors** — some videos fail with "Requested format is not available".
+Workaround: set `YTS_YTDLP_COOKIES_FROM_BROWSER=chrome` in `.env`. Monitoring for an upstream fix.
+
+---
+
 ## Docs
 
 - `SETUP.md` — step-by-step first-time setup
 - `ARCHITECTURE.md` — how everything fits together
-- `PROJECT_STATUS.md` — current operational state
+- `config/prompts/README.md` — how to write custom prompts
 - `UNINSTALL.md` — how to remove the app
