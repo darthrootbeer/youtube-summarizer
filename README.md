@@ -8,7 +8,7 @@ Monitors a list of YouTube channels and emails you a clean summary when a new vi
 - For each new video:
   - Try to fetch the **YouTube transcript**.
   - If there’s no transcript, **download audio** and transcribe locally (MacWhisper CLI).
-  - Create a summary (initial version is a placeholder; we’ll improve later).
+  - Create a summary (prompt-driven; supports per-channel prompt selection).
   - Send a well-formatted email with the summary + a link to the video.
 - Track what’s already been processed in a local **SQLite** database so you don’t get duplicates.
 
@@ -59,6 +59,7 @@ pip install -r requirements.txt
 ### 3) Configure channels + email
 
 - Edit `config/channels.toml`
+- Optional: edit `config/prompts.toml` (and/or set `prompt = "..."` per channel)
 - Copy `.env.example` to `.env` and fill in values (especially Gmail app password)
 
 ## Run

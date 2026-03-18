@@ -11,6 +11,7 @@
 # Each entry:
 # - name: friendly label (used in emails)
 # - url: channel OR playlist URL
+# - prompt: optional prompt key from config/prompts.toml (defaults to "default")
 #
 # Notes:
 # - We intentionally prefer channel_id / playlist_id URLs because they work cleanly with RSS.
@@ -18,46 +19,10 @@
 
 channels = [
   # --- TEMPLATES (copy/paste one of these blocks) ---
-  # { name = "Channel Name",  url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
-  # { name = "Playlist Name", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx" },
+  # { name = "Channel Name",  url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", prompt = "default" },
+  # { name = "Playlist Name", url = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxx", prompt = "default" },
 
   # --- YOUR SOURCES ---
-  # { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
-]
-# YouTube channels to monitor.
-#
-# Recommended format:
-# - Use the channel_id URL (it looks like: https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx)
-# - This lets us build the RSS feed without needing API keys.
-#
-# Each entry:
-# - name: friendly label (used in emails)
-# - url: channel URL
-#
-# How to add a channel (recommended):
-#
-# 1) Open the YouTube channel in your browser
-# 2) Copy the URL that looks like:
-#    https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx
-# 3) Paste it below as `url`
-#
-# Notes:
-# - We intentionally use channel_id URLs because they work cleanly with RSS.
-# - "Handle" URLs like https://www.youtube.com/@somehandle may not work reliably here.
-
-channels = [
-  # --- TEMPLATE (copy/paste this block) ---
-  # { name = "Channel Name", url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx" },
-
-  # --- OPTIONAL EXAMPLES (delete if you want) ---
-  # { name = "Google Developers", url = "https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw" },
-]
-
-
-channels = [
-  { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/@NateBJones/" },
-  { name = "Alex Finn", url = "https://www.youtube.com/@AlexFinnOfficial" },
-
-
-  
+  { name = "AI News & Strategy Daily | Nate B Jones", url = "https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ", prompt = "default" },
+  { name = "Alex Finn", url = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg", prompt = "default" },
 ]

@@ -3,24 +3,8 @@ from __future__ import annotations
 import subprocess
 
 
-SUMMARY_PROMPT = """You are a helpful assistant.
-
-Explain or summarize this in 200 words or fewer using clear, plain English that is easy to skim before coffee.
-Focus on the main ideas and why they matter, not technical details or implementation specifics.
-Break the explanation into small paragraphs or mini-sections so it is quick to scan, covering the core concept,
-the practical meaning or implications, and the real-world relevance.
-End with exactly three concise bullet points labeled Key Takeaways that highlight the most important insights;
-each takeaway should emphasize why the idea matters or what it helps you understand, not simply restate the content.
-
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
-"""
-
-
-def summarize_with_ollama(*, transcript: str, model: str) -> str:
-    prompt = SUMMARY_PROMPT.format(transcript=_compact_transcript(transcript))
+def summarize_with_ollama(*, transcript: str, model: str, prompt_template: str) -> str:
+    prompt = prompt_template.format(transcript=_compact_transcript(transcript))
     res = subprocess.run(
         ["ollama", "run", model],
         input=prompt,

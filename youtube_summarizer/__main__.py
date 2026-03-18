@@ -12,10 +12,16 @@ def main(argv: list[str] | None = None) -> int:
 
     run = sub.add_parser("run", help="Check channels and email new summaries")
     run.add_argument("--limit", type=int, default=10, help="Max new videos per run")
+    run.add_argument("--dry-run", action="store_true", help="Do not send email or mark videos as seen")
 
     args = parser.parse_args(argv)
 
     if args.cmd == "run":
+        if args.dry_run:
+            # Ensure settings loader sees dry-run even without .env.
+            import os
+
+            os.environ["YTS_DRY_RUN"] = "1"
         run_once(limit=args.limit)
         return 0
 

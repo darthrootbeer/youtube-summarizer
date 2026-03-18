@@ -1,0 +1,26 @@
+## Prompt library
+#
+# Define one or more prompt templates for summarization.
+# Channels can pick a prompt by setting `prompt = "some_key"` in `config/channels.toml`.
+#
+# Required:
+# - `default`: used when a channel does not specify a prompt key, or if the key is missing.
+#
+# Notes:
+# - The `{transcript}` placeholder is required.
+#
+
+[prompts]
+
+default = """
+Explain or summarize this in 200 words or fewer using clear, plain English that is easy to skim before coffee.
+Focus on the main ideas and why they matter, not technical details or implementation specifics.
+Break the explanation into small paragraphs or mini-sections so it is quick to scan, covering the core concept, the practical meaning or implications, and the real-world relevance.
+End with exactly three concise bullet points labeled Key Takeaways that highlight the most important insights; each takeaway should emphasize why the idea matters or what it helps you understand, not simply restate the content.
+
+Transcript:
+\"\"\"
+{transcript}
+\"\"\"
+"""
+
