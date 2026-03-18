@@ -1,48 +1,48 @@
 # Setup Guide (macOS)
 
-This is the “do it once” setup so this project can monitor channels and email you summaries.
+One-time setup to get YouTube Summarizer running on your Mac.
 
-## 1) Install system tools
+---
 
-Install the two tools this project relies on for audio downloads/transcoding:
+## 1. Install system tools
 
 ```bash
-brew install yt-dlp ffmpeg
+brew install yt-dlp ffmpeg gum
 ```
 
-Optional (for local summaries):
+- `yt-dlp` + `ffmpeg` — audio download and conversion
+- `gum` — powers the interactive management script
+
+### (Optional) Local summarization with Ollama
+
+If you want free on-device summaries (no per-use cost):
 
 ```bash
 brew install ollama
+ollama serve &
+ollama pull qwen2.5:14b
 ```
 
-## 2) Create a Gmail App Password (required)
+**Pick a model for your RAM:**
+- 8–16 GB → `qwen2.5:7b`
+- 24–32 GB → `qwen2.5:14b` (recommended)
+- 64 GB+ → `qwen2.5:32b`
 
-This is a special password that lets an app send mail without using your real Gmail password.
+---
 
-- Open: `https://myaccount.google.com/security`
-- Turn on **2‑Step Verification**
-- Open: `https://myaccount.google.com/apppasswords`
-- Create an App Password for “Mail” (or “Other”)
-- Copy the 16‑character password
+## 2. Create a Gmail App Password
 
-## 3) Create your `.env`
+This is a 16-character password that lets the app send mail without your real Gmail password.
 
-From the project folder:
+1. Go to **Google Account → Security**: `https://myaccount.google.com/security`
+2. Enable **2-Step Verification** (if not already on)
+3. Go to **App Passwords**: `https://myaccount.google.com/apppasswords`
+4. Create one — name it "YouTube Summarizer" or anything you like
+5. Copy the 16-character password (you'll enter it in the next step)
 
-```bash
-cp .env.example .env
-```
+---
 
-Edit `.env` and set:
-
-- `YTS_EMAIL_FROM`: the Gmail address you’re sending from
-- `YTS_EMAIL_TO`: where you want the summaries delivered
-- `YTS_GMAIL_APP_PASSWORD`: the App Password you generated above
-- `YTS_YTDLP_COOKIES_FROM_BROWSER`: set to `"chrome"` (recommended) if YouTube blocks audio downloads
-- `YTS_OLLAMA_MODEL`: set this if you want local summaries (example: `"qwen2.5:14b"`)
-
-## 4) Set up Python
+## 3. Set up Python
 
 ```bash
 python3 -m venv .venv
@@ -50,58 +50,91 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 5) Pick your channels
+---
 
-Edit `config/channels.toml`.
-
-- Use channel URLs in the `.../channel/UC...` format (most reliable).
-- Set `mode = "summarize"` for summary emails, or `mode = "transcribe"` for transcript-only emails.
-- For summarize mode, customize which sections run in `config/process.md`.
-
-## 6) (Optional) Customize the summary style
-
-Edit `config/process.md`.
-
-- Each enabled prompt becomes a labeled section in the email.
-- Keep the `{transcript}` placeholder.
-
-## 6b) (Optional) Customize transcript cleanup (transcribe mode)
-
-By default, transcript cleanup is deterministic (safe for accuracy).
-
-If you want optional AI-assisted cleanup:
-
-- Edit `config/transcribe.md`
-- Enable it by setting `YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA=1` in your shell (or `.env`)
-
-## 7) (Optional) Start Ollama for local summaries
-
-If you set `YTS_OLLAMA_MODEL`, start the Ollama server and download the model:
+## 4. Run the setup script
 
 ```bash
-ollama serve & sleep 2
-ollama pull qwen2.5:14b
+./scripts/manage.sh
 ```
 
-## 8) Run a test
+From the main menu, choose **Settings** and enter:
+
+- `YTS_EMAIL_FROM` — your Gmail address
+- `YTS_EMAIL_TO` — where summaries should be delivered
+- Gmail App Password — the 16-character password from step 2
+- Ollama model — e.g. `qwen2.5:14b` (leave blank if not using Ollama)
+
+---
+
+## 5. Add your channels and queues
+
+Still inside `manage.sh`:
+
+### Subscribe to a channel or playlist
+
+Choose **Subscribe to channel or playlist**, paste a YouTube URL, and follow the prompts. The script will:
+
+- Auto-detect the channel or playlist name via yt-dlp
+- Show you all available prompts with descriptions
+- Let you pick which prompts run for that feed (or leave all unselected to run all enabled prompts)
+
+### Set up queue playlists (recommended)
+
+Create two private playlists in your YouTube account — one for summarize, one for transcribe. Then use **Add summarize queue** and **Add transcribe queue** to register them.
+
+Once configured, you can add any YouTube video to these playlists from the YouTube app or website and the summarizer will pick it up on the next run.
+
+---
+
+## 6. Test it
+
+Either from `manage.sh` → **Run now → Dry run** (preview without sending), or directly:
 
 ```bash
 source .venv/bin/activate
-python -m youtube_summarizer run --limit 1
+python -m youtube_summarizer run --dry-run --limit 1
 ```
 
-You should receive one email.
+Remove `--dry-run` to send a real email.
 
-## Notes / troubleshooting
+---
 
-- **No YouTube API keys needed**: this uses RSS.
-- **If YouTube blocks downloads**: set `YTS_YTDLP_COOKIES_FROM_BROWSER="chrome"` in `.env` and try again.
-- **If Parakeet warns about Hugging Face rate limits** (optional):
-  - Create a token: `https://huggingface.co/settings/tokens`
-  - Run with `HF_TOKEN` set in your shell:
+## 7. Enable the scheduler (optional but recommended)
+
+To run automatically every 15 minutes:
 
 ```bash
-export HF_TOKEN="your_token_here"
-python -m youtube_summarizer run --limit 1
+launchctl load ~/Library/LaunchAgents/com.youtube-summarizer.plist
 ```
 
+To reload after a config change:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.youtube-summarizer.plist
+launchctl load  ~/Library/LaunchAgents/com.youtube-summarizer.plist
+```
+
+Logs: `/tmp/youtube-summarizer.out.log` and `/tmp/youtube-summarizer.err.log`
+
+---
+
+## Troubleshooting
+
+**No YouTube API keys needed** — this uses RSS, not the YouTube Data API.
+
+**YouTube blocks audio downloads:**
+Set `YTS_YTDLP_COOKIES_FROM_BROWSER="chrome"` in `.env` and try again.
+
+**Parakeet warns about Hugging Face rate limits (optional fix):**
+1. Create a free token: `https://huggingface.co/settings/tokens`
+2. Add to `.env`: `HF_TOKEN="your_token_here"`
+
+**Ollama isn't responding:**
+Make sure `ollama serve` is running. The launchd service doesn't start Ollama automatically.
+
+**Want debug output:**
+```bash
+python -m youtube_summarizer run --debug --limit 1
+```
+Or set `YTS_LOG_LEVEL=DEBUG` in `.env`.

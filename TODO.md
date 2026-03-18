@@ -1,19 +1,28 @@
 # TODO
 
 ## Done
+
 - [x] Channel monitoring via YouTube RSS (no API keys)
 - [x] Seen-video tracking via SQLite (`data/state.db`)
 - [x] Gmail sending via SMTP + App Password
-- [x] macOS launchd scheduler
-- [x] Parakeet v3 transcription fallback (parakeet-mlx) + ffmpeg
-- [x] Ollama-based summarization
-- [x] Playlist queue support (summarize + transcribe playlists)
-- [x] Bootstrap guard: subscriptions skip historical videos, only process new ones going forward
-- [x] Three-section config: subscriptions / summarize queue / transcribe queue
-- [x] Per-source prompt routing: `[SUB]` → all enabled process.md prompts; `[SUMMARY]` → default only; `[TRANSCRIPTION]` → transcribe.md
-- [x] Email header: source label + tag, published date, video URL visible
+- [x] macOS launchd scheduler (15-min poll)
+- [x] Parakeet v3 transcription (parakeet-mlx, Apple Silicon)
+- [x] Ollama-based summarization (local, no API cost)
+- [x] Queue playlists — summarize queue + transcribe queue
+- [x] Bootstrap guard — subscriptions skip historical videos on first run
+- [x] Three-section config: `[[subscriptions]]` / `[summarize_queue]` / `[transcribe_queue]`
+- [x] Per-feed prompt selection (`prompts = ["default", "glossary"]`)
+- [x] 11 prompt types in individual files (`config/prompts/*.md`)
+- [x] Length-adaptive tiers — short / medium / long variants per prompt
+- [x] Transcript cleanup — filler removal, Q&A breaks, clause splitting, capitalization repair
+- [x] Email header: source label, channel name, published date, video URL
+- [x] Structured logging with `--debug` flag and `YTS_LOG_LEVEL`
+- [x] `manage.sh` TUI — subscribe, manage queues, run, status, settings (requires `gum`)
+- [x] `scripts/_config.py` — Python helper for all TOML read/write
+- [x] action_checklist uses ☐ checkbox emoji for action items
 
 ## Backlog
+
 - [ ] Thumbnail in email header
-- [ ] Install/uninstall docs for a fresh Mac
 - [ ] Re-check yt-dlp n-challenge issue once upstream fixes land (see PROJECT_STATUS.md)
+- [ ] `manage.sh` — restart service after config changes

@@ -1,15 +1,35 @@
 # Uninstall (macOS)
 
-## Remove the app folder
+## 1. Stop and remove the scheduler
 
-- Delete the project folder you cloned (example: `~/projects/youtube-summarizer`)
+```bash
+launchctl unload ~/Library/LaunchAgents/com.youtube-summarizer.plist
+rm ~/Library/LaunchAgents/com.youtube-summarizer.plist
+```
 
-## Remove the scheduler (if you enabled it)
+## 2. Delete the project folder
 
-- Unload it (if loaded): `launchctl unload ~/Library/LaunchAgents/com.youtube-summarizer.plist`
-- Delete the plist: `rm ~/Library/LaunchAgents/com.youtube-summarizer.plist`
+```bash
+rm -rf ~/projects/youtube-summarizer   # adjust path if different
+```
 
-## Optional: remove Homebrew tools
+This removes everything: code, config, SQLite database, audio cache, and virtual environment.
 
-- `brew uninstall yt-dlp ffmpeg`
+## 3. (Optional) Remove Homebrew tools
 
+Only if you don't use these elsewhere:
+
+```bash
+brew uninstall yt-dlp ffmpeg gum
+brew uninstall ollama   # if you installed it for this project
+```
+
+## 4. (Optional) Remove Ollama models
+
+```bash
+ollama rm qwen2.5:14b   # or whichever model you pulled
+```
+
+## 5. (Optional) Revoke the Gmail App Password
+
+Go to `https://myaccount.google.com/apppasswords` and delete the password you created for this app.

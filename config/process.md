@@ -1,15 +1,9 @@
 # Process (Ollama prompts)
 
-This file defines **what “jobs” we run on each transcript** before emailing it.
-
-It’s meant to be human-readable and easy to edit.
-
-## How it works
-
-- Each section below is a **prompt** (an instruction set) we can run against the transcript.
-- Set `enabled: true` to turn it on.
-- If **multiple prompts are enabled**, the email will include **multiple clearly-labeled sections**, separated by a horizontal divider.
-- The `{transcript}` placeholder is required in every prompt.
+> **Note:** This file is a legacy fallback. Prompts are now defined in individual files under
+> `config/prompts/` (one file per prompt, with `## short` / `## medium` / `## long` tier variants).
+> The loader uses `config/prompts/` when the directory exists and falls back to this file otherwise.
+> Edit the files in `config/prompts/` instead of this file.
 
 ## Prompts
 

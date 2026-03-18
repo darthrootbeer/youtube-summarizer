@@ -1,188 +1,267 @@
 # Architecture
 
-This document explains how YouTube Summarizer works.
+How YouTube Summarizer works — plain language first, then progressively more detail.
 
-It starts with a plain‑language overview, then progressively gets more detailed.
+---
 
-## What this does (plain language)
+## What this does
 
 You give the app a list of YouTube channels and/or playlists.
 
-On a schedule (or when you run it manually), it:
+On a schedule (or manually), it:
 
-- Checks each channel for new videos.
-- For each new video, it tries to grab the written transcript from YouTube.
-- If there’s no transcript, it downloads **audio only** and transcribes it locally on your Mac.
-- It produces one or more outputs (summaries and/or transcripts), then emails you the result.
-- It remembers what it already processed so you don’t get duplicates.
+1. Checks each source for new videos via RSS.
+2. Downloads audio and transcribes it locally (Parakeet on Apple Silicon).
+3. Runs one or more prompt-driven outputs (summaries and/or clean transcripts).
+4. Emails you the result as a formatted HTML message.
+5. Records what it processed so you never get duplicates.
 
-## The “happy path” (high level pipeline)
+---
 
-1. **Load configuration**
-   - Channels list from `config/channels.toml`
-   - Summarize prompt set from `config/process.md`
-   - (Optional) Transcribe cleanup prompt from `config/transcribe.md`
-   - Settings from `.env` (loaded into environment variables)
-2. **Fetch recent videos**
-   - Build an RSS URL for each channel
-   - Parse RSS entries into “videos”
-3. **Skip already-processed videos**
-   - Use SQLite (`data/state.db`) to check if we’ve seen a video id before
-4. **Get transcript**
-   - Prefer YouTube’s transcript when available
-   - Otherwise download audio + transcribe locally
-5. **Produce output**
-   - **Summarize mode**: run one or more enabled prompts (each becomes a separate email section)
-   - **Transcribe mode**: generate a cleaned transcript (no summarizing)
-6. **Render + send email**
-   - Render HTML email with a clean layout
-   - Include a “Beta stats” footer so we can see performance characteristics
-7. **Mark video as seen**
-   - Write the video id to SQLite so we don’t re-send it next run
+## Pipeline (happy path)
 
-## Key concepts / files
+```
+Load config
+  ↓
+For each source in channels.toml
+  ↓
+Fetch RSS → parse videos
+  ↓
+Skip seen videos (SQLite)
+  ↓
+Bootstrap guard (subscriptions only) → mark historical videos seen, skip them
+  ↓
+Download audio (yt-dlp) → transcribe (Parakeet)
+  ↓
+Determine tier (short / medium / long) from transcript length
+  ↓
+For each prompt assigned to this feed:
+  Run Ollama with the tier-appropriate prompt template
+  ↓
+Render HTML email (Jinja2)
+  ↓
+Send via Gmail SMTP
+  ↓
+Mark video as seen (SQLite)
+```
 
-### Configuration
+---
 
-- `config/channels.toml`
-  - A list of sources (usually YouTube channel URLs in the `.../channel/UC...` form)
-  - Each source can be `mode = "summarize"` or `mode = "transcribe"`
-- `config/process.md`
-  - Summarize-mode “jobs” (prompt templates)
-  - Each enabled prompt becomes a labeled section in the email
-- `config/transcribe.md`
-  - Transcribe-mode optional AI cleanup prompt (only used when enabled via env)
-- `.env` (not committed)
-  - Email settings, transcription backend choice, cookies settings, and optional Ollama model name
-- `.env.example`
-  - Copy this to `.env` when setting up
+## Source types
 
-### Main orchestration
+Three source types are configured in `config/channels.toml`, each with distinct behaviour:
 
-- `youtube_summarizer/run.py`
-  - This is the “conductor”
-  - It loads config, fetches videos, gets transcripts, summarizes, renders email, sends email, and marks videos as seen
+| Section | Behaviour | Bootstrap |
+|---|---|---|
+| `[[subscriptions]]` | New videos only (post-first-run) | Yes — historical videos silently skipped |
+| `[summarize_queue]` | Drain playlist to empty | No — always processed |
+| `[transcribe_queue]` | Drain playlist to empty | No — always processed |
 
-### YouTube integration
+### Per-feed prompt selection
 
-- `youtube_summarizer/youtube.py`
-  - Converts channel/playlist URLs into RSS feed URLs
-  - Parses RSS into video items
-  - Fetches YouTube transcripts when available (fast path)
+Every source can specify which prompts to run:
 
-### Summarization
+```toml
+[[subscriptions]]
+name    = "Some Channel"
+url     = "https://www.youtube.com/channel/UCxxx"
+prompts = ["default", "glossary"]   # run only these two
+```
 
-- `youtube_summarizer/summarizer.py`
-  - Calls Ollama (`ollama run ...`) using enabled prompt templates
-  - Includes a conservative cleanup pass to avoid repeated/extra sections leaking into emails
+Omitting `prompts` runs all globally-enabled prompts.
 
-### Email sending
+---
 
-- `youtube_summarizer/templates/email.html.j2`
-  - Email HTML layout template
-  - Summary is rendered as HTML (paragraphs + bullet list formatting)
-  - Beta stats are appended at the bottom
-- `youtube_summarizer/emailer.py`
-  - Sends the message via Gmail SMTP using an App Password
+## Prompt system
 
-### State tracking (deduping)
+### File layout
 
-- `youtube_summarizer/db.py` (and the SQLite database)
-  - Stores a `seen_videos` table keyed by video id
-  - Prevents duplicate sends
-  - Lives at `data/state.db` by default
+Each prompt lives in its own file in `config/prompts/`:
 
-## Transcript strategy (fast path vs fallback)
+```
+config/prompts/
+  01_default.md
+  02_executive_brief.md
+  03_action_checklist.md
+  04_decisions_options.md
+  05_tldr_5_things.md
+  06_skeptics_review.md
+  07_fact_vs_opinion.md
+  08_glossary.md
+  09_outline_timestamps.md
+  10_quote_bank.md
+  11_role_based.md
+```
 
-### Fast path: YouTube transcript
+Files are loaded in filename order. The numeric prefix controls the order prompts appear in emails.
 
-If YouTube provides an official transcript/captions, we use that.
+### File format
 
-Benefits:
-- Very fast
-- No downloads
-- No local compute
+Each file contains:
 
-### Fallback: audio download + local transcription
+```markdown
+# key_name
 
-If there’s no transcript:
+enabled: true/false
+label: Human-readable label
 
-1. **Download audio-only media**
-   - Uses `yt-dlp`
-   - Prefers smaller, low-bitrate audio streams (still good enough for transcription)
-2. **Transcribe locally**
-   - Default: Parakeet (`parakeet-mlx`) on Apple Silicon
-   - Optional alternative: `whisper.cpp`
+## short
+```prompt
+... prompt for short videos ...
+{transcript}
+```
 
-## Summarization strategy
+## medium
+```prompt
+... prompt for medium videos ...
+{transcript}
+```
 
-### Local summarization (Ollama)
+## long
+```prompt
+... prompt for long videos ...
+{transcript}
+```
+```
 
-If `YTS_OLLAMA_MODEL` is set, the summarizer:
+### Length-adaptive tiers
 
-- Builds prompts from `config/process.md`
-- Calls `ollama run <model>`
-- Returns the generated output text
+Before running any prompt, the transcript length is measured and a tier is selected:
 
-## Transcribe mode (transcript-only emails)
+| Tier | Transcript chars | Approx duration | Body words | Bullets | Wrap-up |
+|---|---|---|---|---|---|
+| short | < 8,000 | < ~9 min | ~100 | 3 | 1 sentence |
+| medium | 8,000–22,000 | ~9–25 min | ~200 | 5 | 1–2 sentences |
+| long | > 22,000 | ~25+ min | ~300 | 8 | 2–3 sentences |
 
-Transcribe mode is designed for “just give me an accurate transcript” workflows:
+The correct template variant is selected automatically — no manual configuration needed.
 
-- Always downloads audio and transcribes locally (Parakeet by default)
-- Produces a cleaned, readable transcript (no summarizing)
-- Optional: enable AI-assisted cleanup using `config/transcribe.md` + `YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA=1`
+### Output repair
 
-### Fallback summarization
+After summarization, the default prompt output is validated:
+- Must contain a `Key takeaways` section with the expected number of bullets.
+- If malformed, a repair pass re-runs the summary through Ollama with explicit format instructions.
+- `_ensure_key_takeaways()` in `run.py` handles this.
 
-If Ollama isn’t running / configured, the system still sends an email with a simple fallback summary.
+---
+
+## Transcript pipeline
+
+Transcription always uses **Parakeet MLX** (local, Apple Silicon). The YouTube transcript API is not used.
+
+### Audio download
+
+`yt-dlp` downloads audio-only (smallest available stream). Cookies from the browser (`YTS_YTDLP_COOKIES_FROM_BROWSER`) can be passed to avoid bot detection.
+
+### Transcription
+
+Parakeet (`mlx-community/parakeet-tdt-0.6b-v3` by default) runs on-device. Audio files are cached in `data/audio/` and cleaned up after `YTS_AUDIO_RETENTION_DAYS` (default: 7).
+
+---
+
+## Transcript cleanup (transcribe mode)
+
+When a source is in **transcribe mode**, the raw Parakeet output goes through deterministic cleanup before emailing. No LLM is involved by default (optional AI cleanup can be enabled via `YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA=1`).
+
+### Cleanup options (configured in `config/transcribe.md`)
+
+| Option | What it does |
+|---|---|
+| `remove_fillers` | Strips um, uh, kind of, you know, sort of, I mean; removes double-word stutters; capitalises after filler removal |
+| `questions_own_paragraph` | Forces a blank line before/after lines ending in `?` |
+| `robust_sentence_breaks` | Adds paragraph breaks at sentence boundaries (~1,000 char chunks) |
+| `qa_paragraph_breaks` | Detects "First question", "[Name] writes," patterns and forces breaks |
+| `split_long_clauses` | Splits compound sentences at `, and` / `, but` when both clauses are substantial |
+| `strip_stage_directions` | Removes `[music]`, `[applause]`, etc. |
+| `normalize_numbers` | Converts spoken numbers to digits (off by default) |
+| `speaker_labels` | Attempts speaker labels (high hallucination risk, off by default) |
+
+---
 
 ## Email rendering
 
-The summary text often contains lightweight markdown-like formatting (paragraphs, `-` bullets).
+Summary text (paragraphs + `- ` bullets) is converted to HTML by `_format_summary_html()` in `run.py`:
 
-Before sending HTML email, we convert that into proper HTML so Gmail shows:
+- Blank-line-separated chunks → `<p>` tags
+- `- ` or `* ` lines → `<ul><li>` list
+- `Key takeaways` line → small uppercase section header
+- Text after the bullet block → `<p>` wrap-up paragraph
 
-- Paragraph spacing
-- Bullets as real list items
-- A “Key takeaways” header when present
+Each enabled prompt produces one labeled card in the email. Cards are separated by a thin divider.
 
-This keeps the email skimmable.
+---
 
-## Beta stats (performance instrumentation)
+## State tracking
 
-During beta, every email includes a footer showing:
+SQLite database at `data/state.db`:
 
-- Media size (MB)
-- Download time (seconds)
-- Transcribe time (seconds)
-- Summarize time (seconds)
-- Total time to send (seconds)
+| Table | Purpose |
+|---|---|
+| `seen_videos` | One row per processed video id; prevents duplicate sends |
+| `bootstrapped_channels` | One row per subscription URL; marks that historical videos have been skipped |
 
-This makes it easy to see where time is being spent.
+---
 
-## Cleanup (disk usage)
+## Key files
 
-When we download audio and create transcripts, those files can accumulate.
+### Orchestration
 
-On every run, the app performs best‑effort cleanup of old files in:
+- `youtube_summarizer/run.py` — main loop: loads config, iterates sources, drives transcript + summarize + email pipeline
+- `youtube_summarizer/__main__.py` — CLI entry point (`run` and `watch` subcommands, `--dry-run`, `--debug`)
 
-- `data/audio/`
-- `data/audio/parakeet/`
+### Config loading
 
-Retention is controlled by:
+- `youtube_summarizer/config.py` — parses `channels.toml`, `config/prompts/*.md`, `transcribe.md`, `.env`
 
-- `YTS_AUDIO_RETENTION_DAYS` (default: 7)
+### Data fetching
 
-## Running it
+- `youtube_summarizer/youtube.py` — RSS feed fetch + parse; yt-dlp playlist enumeration fallback
 
-- Manual run:
-  - `python -m youtube_summarizer run --limit 1`
-- Dry run (no email sent, no “seen” writes):
-  - `python -m youtube_summarizer run --dry-run --limit 1`
+### Summarization
 
-## What’s intentionally NOT here (yet)
+- `youtube_summarizer/summarizer.py` — calls `ollama run`; `cleanup_summary()` strips markdown artefacts
 
-- A hosted server/API (this is a local Mac app)
-- A cloud-based summarization provider (Ollama is local)
-- A YouTube Data API integration (RSS avoids API keys)
+### Transcription
 
+- `youtube_summarizer/transcriber.py` — Parakeet MLX and whisper.cpp backends
+
+### Email
+
+- `youtube_summarizer/emailer.py` — Gmail SMTP send
+- `youtube_summarizer/templates/email.html.j2` — Jinja2 HTML template
+
+### Database
+
+- `youtube_summarizer/db.py` — `seen_videos` + `bootstrapped_channels` helpers
+
+### Management scripts
+
+- `scripts/manage.sh` — interactive TUI (requires `gum`) for setup and management
+- `scripts/_config.py` — Python helper for all `channels.toml` / `transcribe.md` read/write operations
+
+---
+
+## Running
+
+```bash
+# Once
+python -m youtube_summarizer run [--dry-run] [--limit N] [--debug]
+
+# Continuous polling (used by launchd)
+python -m youtube_summarizer watch [--poll-seconds 900] [--limit 10]
+```
+
+### launchd service
+
+`~/Library/LaunchAgents/com.youtube-summarizer.plist` — runs `watch` at login, polls every 15 minutes.
+
+Logs: `/tmp/youtube-summarizer.out.log`, `/tmp/youtube-summarizer.err.log`
+
+---
+
+## What's intentionally not here
+
+- A hosted server or API (this is a local Mac app)
+- A cloud summarization provider (Ollama is local)
+- YouTube Data API (RSS avoids API keys entirely)
+- Multi-user support
