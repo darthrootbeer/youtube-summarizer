@@ -102,9 +102,13 @@ Remove `--dry-run` to send a real email.
 
 ## 7. Enable the scheduler (optional but recommended)
 
-To run automatically every 15 minutes:
+To run automatically every 15 minutes, install the launchd service:
 
 ```bash
+# Substitute your actual project path and install the plist
+sed "s|__PROJECT_PATH__|$(pwd)|g" launchd/com.youtube-summarizer.plist \
+  > ~/Library/LaunchAgents/com.youtube-summarizer.plist
+
 launchctl load ~/Library/LaunchAgents/com.youtube-summarizer.plist
 ```
 

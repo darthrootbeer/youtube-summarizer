@@ -9,7 +9,7 @@
     <array>
       <string>/bin/zsh</string>
       <string>-lc</string>
-      <string>export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH" &amp;&amp; cd "/Users/bengoddard/projects/youtube-summarizer" &amp;&amp; source .venv/bin/activate &amp;&amp; python -m youtube_summarizer watch --poll-seconds 900 --limit 10</string>
+      <string>export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH" &amp;&amp; cd "__PROJECT_PATH__" &amp;&amp; source .venv/bin/activate &amp;&amp; python -m youtube_summarizer watch --poll-seconds 900 --limit 10</string>
     </array>
 
     <key>RunAtLoad</key>

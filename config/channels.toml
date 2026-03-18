@@ -32,13 +32,11 @@
 #   url  = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx"
 # ─────────────────────────────────────────────────────────────────────────────
 
-[[subscriptions]]
-name = "AI News & Strategy Daily | Nate B Jones"
-url  = "https://www.youtube.com/channel/UC0C-17n9iuUQPylguM1d-lQ"
-
-[[subscriptions]]
-name = "Alex Finn"
-url  = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg"
+# Example subscription — replace with a real channel URL:
+# [[subscriptions]]
+# name = "My Favourite Channel"
+# url  = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx"
+# prompts = ["default"]   # optional: omit to run all enabled prompts
 
 
 # ─── SUMMARIZE QUEUE ──────────────────────────────────────────────────────────
@@ -53,7 +51,7 @@ url  = "https://www.youtube.com/channel/UCfQNB91qRP_5ILeu_S_bSkg"
 
 [summarize_queue]
 name    = "SUMMARIZE playlist (queue)"
-url     = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhtDgXGGeaMm274Uj_7TCjHq"
+url     = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 prompts = ["default"]
 
 
@@ -69,4 +67,4 @@ prompts = ["default"]
 
 [transcribe_queue]
 name = "TRANSCRIBE playlist (queue)"
-url  = "https://www.youtube.com/playlist?list=PLx1Q2ktFPuhuT2zHku6oSGJAKvXeY_9KW"
+url  = "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
