@@ -131,10 +131,10 @@ import json,sys
 for p in json.load(sys.stdin): print(json.dumps(p))
 ")
 
-  [ ${#display_items[@]} -eq 0 ] && { err "No prompts found."; return 1; }
+  [ ${#display_items[@]} -eq 0 ] && { err "No prompts found." >&2; return 1; }
 
-  dim "↑↓ navigate  ·  x toggle  ·  Enter confirm  ·  none selected = global defaults"
-  echo ""
+  dim "↑↓ navigate  ·  x toggle  ·  Enter confirm  ·  none selected = global defaults" >&2
+  echo "" >&2
 
   local choose_args=("--no-limit" "--height" "16")
   if [ ${#selected_display[@]} -gt 0 ]; then
