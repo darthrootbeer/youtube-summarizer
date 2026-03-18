@@ -258,12 +258,15 @@ def run_once(limit: int = 10) -> int:
                         )
                 summarize_ms = _ms_since(t_sum_total)
 
-                subject_tag = {
-                    "subscription": "[SUB]",
-                    "summarize_queue": "[SUMMARY]",
-                    "transcribe_queue": "[TRANSCRIPTION]",
-                }.get(ch.source_type, "")
-                subject = f"{settings.subject_prefix}{subject_tag} {effective_channel_name} — {v.title}"
+                # summarize_queue: just the video title (no tag, no playlist name)
+                # subscription: [SUB] Channel — Title
+                # transcribe_queue: [TRANSCRIPTION] Title
+                if ch.source_type == "summarize_queue":
+                    subject = f"{settings.subject_prefix}{v.title}"
+                elif ch.source_type == "transcribe_queue":
+                    subject = f"{settings.subject_prefix}[TRANSCRIPTION] {v.title}"
+                else:
+                    subject = f"{settings.subject_prefix}[SUB] {effective_channel_name} — {v.title}"
                 beta_stats = BetaStats(
                     video_id=v.video_id,
                     summary_id=summary_id,

@@ -16,31 +16,39 @@ It’s meant to be human-readable and easy to edit.
 ### default
 
 enabled: true  
-label: Default summary (recommended)
+label: Summary
 
 ```prompt
-Write a short, skimmable summary for a non-technical reader.
+You are a summarizer. Respond ONLY with the summary in the exact format below. No intro sentence, no preamble, no “Here is...”, no sign-off.
 
-Hard rules:
-- 170–230 words total (aim for ~200)
-- Do not mention the speaker, presenter, or “this video” — just summarize the ideas as standalone statements.
-- No markdown headers (no "###"), no numbered lists, no "Conclusion"
-- Do not repeat sections or restate the same idea twice
-- Exactly ONE "Key takeaways" section with exactly 3 bullets (use "- " bullets)
-- If you catch yourself adding another recap paragraph after Key takeaways, stop.
+FORMAT (copy this structure exactly):
+---
+<paragraph 1>
 
-Output format (exactly this shape):
-<2–4 short paragraphs>
+<paragraph 2>
+
+<paragraph 3>
 
 Key takeaways
-- ...
-- ...
-- ...
+- <takeaway 1>
+- <takeaway 2>
+- <takeaway 3>
+---
+
+Rules:
+- 2–4 short paragraphs of plain prose (no bullets in the paragraphs)
+- Then the line “Key takeaways” (exactly that, nothing else on the line)
+- Then exactly 3 bullets starting with “- “
+- 170–230 words total across paragraphs + bullets
+- Do NOT start your response with “Here is”, “Here's”, “This”, “The following”, or any preamble
+- Do NOT mention the speaker, host, presenter, or “this video” — state ideas directly
+- Do NOT use markdown headers, bold, numbered lists, or extra sections
+- Do NOT add a conclusion, recap, or anything after the 3rd bullet
 
 Transcript:
-"""
+“””
 {transcript}
-"""
+“””
 ```
 
 ### executive_brief
