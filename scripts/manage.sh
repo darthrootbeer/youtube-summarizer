@@ -599,33 +599,46 @@ cmd_run_now() {
   pause
 }
 
-# ── service status ────────────────────────────────────────────────────────────
+# ── service status & scheduler management ────────────────────────────────────
+PLIST_SRC="$REPO_ROOT/launchd/com.youtube-summarizer.plist"
+PLIST_DEST="$HOME/Library/LaunchAgents/com.youtube-summarizer.plist"
+
+_scheduler_running() {
+  launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"
+}
+_scheduler_installed() {
+  [ -f "$PLIST_DEST" ]
+}
+
 cmd_status() {
-  header "Service Status"
+  while true; do
+    header "Status & Scheduler"
 
-  echo ""
-  if launchctl list 2>/dev/null | grep -q "$PLIST_LABEL"; then
-    ok "launchd service: running (polls every 15 min)"
-  else
-    warn "launchd service: not running"
-    dim "Install: sed \"s|__PROJECT_PATH__|$REPO_ROOT|g\" launchd/com.youtube-summarizer.plist \\"
-    dim "           > ~/Library/LaunchAgents/com.youtube-summarizer.plist"
-    dim "Start:   launchctl load ~/Library/LaunchAgents/com.youtube-summarizer.plist"
-  fi
+    # ── scheduler state ──
+    echo ""
+    if _scheduler_running; then
+      ok "Scheduler: running  (polls every 15 min)"
+    elif _scheduler_installed; then
+      warn "Scheduler: installed but stopped"
+    else
+      warn "Scheduler: not installed"
+    fi
 
-  echo ""
-  section "Database:"
-  "$PYTHON" - "$REPO_ROOT" <<'PYEOF'
+    # ── database summary ──
+    echo ""
+    section "Database:"
+    "$PYTHON" - "$REPO_ROOT" <<'PYEOF'
 import sqlite3, pathlib, sys
 db = pathlib.Path(sys.argv[1]) / "data" / "state.db"
 if db.exists():
     con = sqlite3.connect(db)
     total  = con.execute("SELECT COUNT(*) FROM seen_videos").fetchone()[0]
     recent = con.execute(
-        "SELECT COUNT(*) FROM seen_videos WHERE seen_at > datetime('now', '-7 days')"
+        "SELECT COUNT(*) FROM seen_videos WHERE first_seen_at > datetime('now', '-7 days')"
     ).fetchone()[0]
     rows = con.execute(
-        "SELECT channel_name, title, seen_at FROM seen_videos ORDER BY seen_at DESC LIMIT 5"
+        "SELECT channel_name, video_title, first_seen_at FROM seen_videos "
+        "ORDER BY first_seen_at DESC LIMIT 5"
     ).fetchall()
     con.close()
     print(f"    Processed all time:   {total}")
@@ -639,59 +652,86 @@ else:
     print("    No database yet — run once to create it.")
 PYEOF
 
-  echo ""
-  section "Configured feeds:"
-  "$PYTHON" - "$REPO_ROOT" <<'PYEOF'
-import tomllib, pathlib, sys
-try:
-    with open(pathlib.Path(sys.argv[1]) / "config" / "channels.toml", "rb") as f:
-        cfg = tomllib.load(f)
-    subs = cfg.get("subscriptions", [])
-    if subs:
-        print(f"    Subscriptions ({len(subs)}):")
-        for s in subs:
-            p = s.get("prompts") or []
-            label = ", ".join(p) if p else "all enabled"
-            print(f"      •  {s.get('name', '(unnamed)')}  [{label}]")
-    else:
-        print("    Subscriptions: none")
-    sq = cfg.get("summarize_queue", {})
-    if sq.get("url"):
-        p = sq.get("prompts") or []
-        print(f"    Summarize queue:   {sq.get('name', '(unnamed)')}  [{', '.join(p) if p else 'all enabled'}]")
-    else:
-        print("    Summarize queue:   not configured")
-    tq = cfg.get("transcribe_queue", {})
-    print(f"    Transcribe queue:  {'configured — ' + tq.get('name','') if tq.get('url') else 'not configured'}")
-except Exception as e:
-    print(f"    Error: {e}")
-PYEOF
+    # ── recent logs ──
+    echo ""
+    section "Recent logs:"
+    local shown=0
+    for log in /tmp/youtube-summarizer.out.log /tmp/youtube-summarizer.err.log; do
+      if [ -f "$log" ] && [ -s "$log" ]; then
+        dim "$(basename "$log"):"
+        tail -8 "$log" | while IFS= read -r line; do echo "    $line"; done
+        echo ""
+        shown=1
+      fi
+    done
+    [ "$shown" = "0" ] && dim "No logs yet."
 
-  echo ""
-  section "Recent logs:"
-  local shown=0
-  for log in /tmp/youtube-summarizer.out.log /tmp/youtube-summarizer.err.log; do
-    if [ -f "$log" ] && [ -s "$log" ]; then
-      dim "$(basename "$log"):"
-      tail -8 "$log" | while IFS= read -r line; do echo "    $line"; done
-      echo ""
-      shown=1
+    # ── actions ──
+    echo ""
+    local actions=()
+    if _scheduler_running; then
+      actions+=("⏹   Stop scheduler")
+      actions+=("🔄  Restart scheduler")
+    elif _scheduler_installed; then
+      actions+=("▶️   Start scheduler")
+      actions+=("🗑   Uninstall scheduler")
+    else
+      actions+=("⚙️   Install & start scheduler")
     fi
+    actions+=("←   Back")
+
+    local action
+    action=$(printf '%s\n' "${actions[@]}" | gum choose \
+      --header "  ──────────────────────────────") || return
+
+    case "$action" in
+      "⚙️"*)
+        echo ""
+        sed "s|__PROJECT_PATH__|$REPO_ROOT|g" "$PLIST_SRC" > "$PLIST_DEST"
+        launchctl load "$PLIST_DEST"
+        ok "Scheduler installed and started."
+        pause
+        ;;
+      "▶️"*)
+        launchctl load "$PLIST_DEST"
+        ok "Scheduler started."
+        pause
+        ;;
+      "⏹"*)
+        launchctl unload "$PLIST_DEST"
+        ok "Scheduler stopped."
+        pause
+        ;;
+      "🔄"*)
+        launchctl unload "$PLIST_DEST"
+        launchctl load  "$PLIST_DEST"
+        ok "Scheduler restarted."
+        pause
+        ;;
+      "🗑"*)
+        if gum confirm "  Uninstall scheduler?"; then
+          launchctl unload "$PLIST_DEST" 2>/dev/null || true
+          rm -f "$PLIST_DEST"
+          ok "Scheduler uninstalled."
+          pause
+        fi
+        ;;
+      "←"*) return ;;
+    esac
   done
-  [ "$shown" = "0" ] && dim "No logs yet."
-  pause
 }
 
 # ── settings ──────────────────────────────────────────────────────────────────
 cmd_settings() {
   header "Settings"
 
-  local email_from="" email_to="" ollama_model="" parakeet_model="" has_pw="no"
+  local email_from="" email_to="" ollama_model="" parakeet_model="" log_level="" has_pw="no"
   if [ -f "$ENV_FILE" ]; then
     email_from=$(     grep '^YTS_EMAIL_FROM='          "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     email_to=$(       grep '^YTS_EMAIL_TO='            "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     ollama_model=$(   grep '^YTS_OLLAMA_MODEL='        "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     parakeet_model=$( grep '^YTS_PARAKEET_MODEL='      "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
+    log_level=$(      grep '^YTS_LOG_LEVEL='           "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     local _pw
     _pw=$(            grep '^YTS_GMAIL_APP_PASSWORD='  "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
     [ -n "$_pw" ] && has_pw="yes"
@@ -717,6 +757,15 @@ cmd_settings() {
   parakeet_model=$(gum input \
     --value "${parakeet_model:-mlx-community/parakeet-tdt-0.6b-v3}" --width 60)
 
+  section "Debug logging:"
+  local debug_current debug_choice
+  [ "${log_level^^}" = "DEBUG" ] && debug_current="on" || debug_current="off"
+  debug_choice=$(gum choose \
+    --header "  Current: $debug_current" \
+    "off — normal logging" \
+    "on  — verbose debug output") || { warn "Cancelled."; return; }
+  [[ "$debug_choice" == "on"* ]] && log_level="DEBUG" || log_level=""
+
   echo ""
   gum confirm "  Save settings to .env?" || { warn "Cancelled."; return; }
 
@@ -724,12 +773,10 @@ cmd_settings() {
 
   if [ -f "$ENV_FILE" ]; then
     if [ -n "$gmail_pw" ]; then
-      # New password — strip old one too
-      grep -Ev '^(YTS_EMAIL_FROM|YTS_EMAIL_TO|YTS_OLLAMA_MODEL|YTS_PARAKEET_MODEL|YTS_GMAIL_APP_PASSWORD)=' \
+      grep -Ev '^(YTS_EMAIL_FROM|YTS_EMAIL_TO|YTS_OLLAMA_MODEL|YTS_PARAKEET_MODEL|YTS_GMAIL_APP_PASSWORD|YTS_LOG_LEVEL)=' \
         "$ENV_FILE" > "$tmp" 2>/dev/null || true
     else
-      # Keep existing password
-      grep -Ev '^(YTS_EMAIL_FROM|YTS_EMAIL_TO|YTS_OLLAMA_MODEL|YTS_PARAKEET_MODEL)=' \
+      grep -Ev '^(YTS_EMAIL_FROM|YTS_EMAIL_TO|YTS_OLLAMA_MODEL|YTS_PARAKEET_MODEL|YTS_LOG_LEVEL)=' \
         "$ENV_FILE" > "$tmp" 2>/dev/null || true
     fi
   fi
@@ -740,6 +787,7 @@ cmd_settings() {
     [ -n "$gmail_pw" ]       && echo "YTS_GMAIL_APP_PASSWORD=\"$gmail_pw\""
     [ -n "$ollama_model" ]   && echo "YTS_OLLAMA_MODEL=\"$ollama_model\""
     [ -n "$parakeet_model" ] && echo "YTS_PARAKEET_MODEL=\"$parakeet_model\""
+    [ -n "$log_level" ]      && echo "YTS_LOG_LEVEL=\"$log_level\""
   } >> "$tmp"
   mv "$tmp" "$ENV_FILE"
 
