@@ -16,12 +16,23 @@ class Channel:
     prompt: str | None = None  # if set, only this prompt key runs (else all enabled prompts)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ProcessPrompt:
     key: str
     label: str
     enabled: bool
-    template: str
+    # Tiered templates keyed by "short", "medium", "long".
+    # Single-template prompts (transcribe, legacy) store the same value under all three keys.
+    templates: dict
+
+    @property
+    def template(self) -> str:
+        """Backwards-compat: returns the medium template."""
+        return self.templates.get("medium") or next(iter(self.templates.values()), "")
+
+    def for_tier(self, tier: str) -> str:
+        """Return the template for the given tier, falling back to medium."""
+        return self.templates.get(tier) or self.template
 
 
 @dataclass(frozen=True)
@@ -96,20 +107,93 @@ _PROCESS_SECTION_RE = re.compile(r"(?m)^###\s+([a-zA-Z0-9_-]+)\s*$")
 _PROCESS_ENABLED_RE = re.compile(r"(?mi)^\s*enabled\s*:\s*(true|false)\s*$")
 _PROCESS_LABEL_RE = re.compile(r"(?mi)^\s*label\s*:\s*(.+?)\s*$")
 _PROCESS_FENCE_RE = re.compile(r"(?s)```prompt\s*(.*?)\s*```")
+# Matches "## short", "## medium", "## long" tier headers in per-file prompt format
+_TIER_SECTION_RE = re.compile(r"(?m)^##\s+(short|medium|long)\s*$")
+
+
+def _parse_tiered_prompt_file(raw: str) -> dict[str, str]:
+    """
+    Parse a prompt file that has ## short / ## medium / ## long sections,
+    each containing a ```prompt``` block.  Returns {"short": ..., "medium": ..., "long": ...}.
+    Falls back: missing tiers inherit from medium, then from whatever is present.
+    """
+    tiers: dict[str, str] = {}
+    sections = list(_TIER_SECTION_RE.finditer(raw))
+    for i, m in enumerate(sections):
+        tier = m.group(1).lower()
+        start = m.end()
+        end = sections[i + 1].start() if i + 1 < len(sections) else len(raw)
+        block = raw[start:end]
+        fence_m = _PROCESS_FENCE_RE.search(block)
+        if fence_m:
+            t = fence_m.group(1).strip()
+            if t and "{transcript}" in t:
+                tiers[tier] = t
+    if not tiers:
+        return {}
+    fallback = tiers.get("medium") or next(iter(tiers.values()))
+    return {
+        "short": tiers.get("short", fallback),
+        "medium": tiers.get("medium", fallback),
+        "long": tiers.get("long", fallback),
+    }
+
+
+def _key_from_filename(name: str) -> str:
+    """'01_default.md' -> 'default'"""
+    stem = Path(name).stem          # '01_default'
+    stem = re.sub(r"^\d+_?", "", stem)  # 'default'
+    return stem
 
 
 def load_process_prompts(path: Path | None = None) -> list[ProcessPrompt]:
     """
-    Loads markdown-based prompt definitions from `config/process.md`.
-
-    This lets non-developers edit prompts in a friendly format.
+    Loads prompt definitions.  Prefers individual files in `config/prompts/`,
+    falling back to `config/process.md` if the directory doesn't exist.
     """
+    prompts_dir = repo_root() / "config" / "prompts"
+    if prompts_dir.is_dir():
+        return _load_process_prompts_from_dir(prompts_dir)
+
+    # Legacy: single process.md file
     cfg_path = path or (repo_root() / "config" / "process.md")
     if not cfg_path.exists():
-        # Back-compat: fall back to prompts.toml default only
         prompts = load_prompts()
-        return [ProcessPrompt(key="default", label="Default", enabled=True, template=prompts["default"])]
+        t = prompts["default"]
+        return [ProcessPrompt(key="default", label="Default", enabled=True,
+                              templates={"short": t, "medium": t, "long": t})]
 
+    return _load_process_prompts_from_md(cfg_path)
+
+
+def _load_process_prompts_from_dir(prompts_dir: Path) -> list[ProcessPrompt]:
+    out: list[ProcessPrompt] = []
+    for p in sorted(prompts_dir.glob("*.md")):
+        raw = p.read_text(encoding="utf-8")
+        key = _key_from_filename(p.name)
+
+        enabled_m = _PROCESS_ENABLED_RE.search(raw)
+        enabled = (enabled_m.group(1).lower() == "true") if enabled_m else False
+
+        label_m = _PROCESS_LABEL_RE.search(raw)
+        label = (label_m.group(1).strip() if label_m else key).strip()
+
+        templates = _parse_tiered_prompt_file(raw)
+        if not templates:
+            continue
+
+        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, templates=templates))
+
+    if not any(p.enabled for p in out):
+        # Emergency fallback
+        prompts = load_prompts()
+        t = prompts["default"]
+        out.insert(0, ProcessPrompt(key="default", label="Default", enabled=True,
+                                    templates={"short": t, "medium": t, "long": t}))
+    return out
+
+
+def _load_process_prompts_from_md(cfg_path: Path) -> list[ProcessPrompt]:
     raw = cfg_path.read_text(encoding="utf-8")
     sections = list(_PROCESS_SECTION_RE.finditer(raw))
     out: list[ProcessPrompt] = []
@@ -130,13 +214,14 @@ def load_process_prompts(path: Path | None = None) -> list[ProcessPrompt]:
         if not template or "{transcript}" not in template:
             continue
 
-        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, template=template))
+        templates = {"short": template, "medium": template, "long": template}
+        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, templates=templates))
 
-    # Ensure there is always at least one enabled prompt.
     if not any(p.enabled for p in out):
         prompts = load_prompts()
-        out.insert(0, ProcessPrompt(key="default", label="Default", enabled=True, template=prompts["default"]))
-
+        t = prompts["default"]
+        out.insert(0, ProcessPrompt(key="default", label="Default", enabled=True,
+                                    templates={"short": t, "medium": t, "long": t}))
     return out
 
 
@@ -169,7 +254,8 @@ def load_transcribe_prompts(path: Path | None = None) -> list[ProcessPrompt]:
         if not template or "{transcript}" not in template:
             continue
 
-        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, template=template))
+        templates = {"short": template, "medium": template, "long": template}
+        out.append(ProcessPrompt(key=key, label=label, enabled=enabled, templates=templates))
 
     return out
 

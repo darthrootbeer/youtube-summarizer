@@ -244,7 +244,7 @@ def run_once(limit: int = 10) -> int:
                     for p in channel_prompts:
                         log.debug("  running prompt '%s' via ollama=%s ...", p.key, settings.ollama_model or "off")
                         t_sum = time.perf_counter()
-                        tmpl = _apply_tier_vars(p.template, tier) if p.key == "default" else p.template
+                        tmpl = p.for_tier(tier["tier"])
                         out = _summarize(transcript.text, settings.ollama_model, tmpl)
                         if p.key == "default":
                             out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model, min_bullets=int(tier["bullet_count"]))
@@ -424,7 +424,7 @@ def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
 
 def _summary_tier(transcript_chars: int) -> dict:
     """
-    Returns length-adaptive summarization targets based on estimated video duration.
+    Returns the length tier and expected bullet count based on transcript length.
 
     Thresholds (approx 900 chars/min of speech):
       short  < 8,000 chars  →  ~< 9 min
@@ -432,35 +432,11 @@ def _summary_tier(transcript_chars: int) -> dict:
       long   > 22,000       →  ~25+ min
     """
     if transcript_chars < 8_000:
-        return {
-            "tier": "short",
-            "word_target": "100",
-            "bullet_count": "3",
-            "wrapup_instruction": "1 sentence wrap-up",
-        }
+        return {"tier": "short", "bullet_count": "3"}
     if transcript_chars < 22_000:
-        return {
-            "tier": "medium",
-            "word_target": "200",
-            "bullet_count": "5",
-            "wrapup_instruction": "1-2 sentence wrap-up",
-        }
-    return {
-        "tier": "long",
-        "word_target": "300",
-        "bullet_count": "8",
-        "wrapup_instruction": "2-3 sentence wrap-up",
-    }
+        return {"tier": "medium", "bullet_count": "5"}
+    return {"tier": "long", "bullet_count": "8"}
 
-
-def _apply_tier_vars(template: str, tier: dict) -> str:
-    """Fill tier placeholders in a prompt template, leaving {transcript} intact."""
-    return (
-        template
-        .replace("{word_target}", tier["word_target"])
-        .replace("{bullet_count}", tier["bullet_count"])
-        .replace("{wrapup_instruction}", tier["wrapup_instruction"])
-    )
 
 
 def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
