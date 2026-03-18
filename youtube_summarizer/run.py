@@ -306,6 +306,7 @@ def run_once(limit: int = 10) -> int:
                     "transcript_source": beta_stats.transcript_source,
                     "ollama_model": beta_stats.ollama_model,
                     "enabled_prompts": ", ".join(beta_stats.enabled_prompts),
+                    "prompt_tier": tier["tier"] if mode != "transcribe" else "n/a",
                     "prompt_count": len(beta_stats.enabled_prompts),
                     "per_prompt_summarize_s": ", ".join(per_prompt_s),
                     "transcript_chars": len(transcript.text or ""),
