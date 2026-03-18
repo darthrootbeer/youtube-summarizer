@@ -318,6 +318,7 @@ def run_once(limit: int = 10) -> int:
                     source_name=effective_channel_name,
                     video_title=v.title,
                     video_url=v.url,
+                    thumbnail_url=f"https://img.youtube.com/vi/{v.video_id}/hqdefault.jpg",
                     sections=sections,
                     transcript_source=transcript.source,
                     published_at=v.published_at,
