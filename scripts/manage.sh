@@ -576,8 +576,8 @@ main() {
     local choice
     choice=$(gum choose \
       "➕  Subscribe to channel or playlist" \
-      "📼  Add transcribe queue"             \
-      "📋  Add summarize queue"              \
+      "📼  Manage transcribe queue"          \
+      "📋  Manage summarize queue"           \
       "⚙️   Manage subscriptions"             \
       "▶️   Run now"                           \
       "📊  Service status"                   \
