@@ -200,6 +200,61 @@ def cmd_set_transcribe_options(args) -> None:
     TRANSCRIBE_MD.write_text(raw, encoding="utf-8")
 
 
+# ── subscription detail display ───────────────────────────────────────────────
+
+def cmd_show_subscription_detail(args) -> None:
+    """Print a human-readable prompt status block for one subscription."""
+    cfg = _read_cfg()
+    sub = next((s for s in cfg.get("subscriptions", []) if s.get("name") == args.name), None)
+    if sub is None:
+        print(f"  (subscription '{args.name}' not found)", file=sys.stderr)
+        return
+
+    print(f"  URL: {sub.get('url', '(none)')}")
+    print()
+
+    explicit: list[str] = sub.get("prompts") or []
+
+    # Load all prompts
+    all_prompts = []
+    for p in sorted(PROMPTS_DIR.glob("*.md")):
+        if p.name == "README.md":
+            continue
+        raw = p.read_text(encoding="utf-8")
+        key = re.sub(r"^\d+_?", "", p.stem)
+        label_m = re.search(r"(?mi)^\s*label\s*:\s*(.+)", raw)
+        label = label_m.group(1).strip() if label_m else key
+        enabled_m = re.search(r"(?mi)^\s*enabled\s*:\s*(true|false)", raw)
+        enabled = (enabled_m.group(1).lower() == "true") if enabled_m else False
+        all_prompts.append({"key": key, "label": label, "enabled": enabled})
+
+    if explicit:
+        print(f"  Prompts (per-feed — {len(explicit)} selected):")
+        for p in all_prompts:
+            active = p["key"] in explicit
+            mark = "✓" if active else " "
+            faded = "" if active else "  "
+            print(f"    {mark}  {p['label']:{faded}}")
+    else:
+        running = [p for p in all_prompts if p["enabled"]]
+        off = [p for p in all_prompts if not p["enabled"]]
+        print(f"  Prompts: all globally-enabled ({len(running)} running, {len(off)} off)")
+        for p in running:
+            print(f"    ✓  {p['label']}")
+        if off:
+            print(f"       ({len(off)} others globally disabled)")
+
+
+def cmd_main_menu_subs(_args) -> None:
+    """Print subscription items for the main menu, one per line: 'NAME\tPROMPT_SUMMARY'"""
+    cfg = _read_cfg()
+    for s in cfg.get("subscriptions", []):
+        name = s.get("name", "(unnamed)")
+        prompts = s.get("prompts") or []
+        summary = ", ".join(prompts) if prompts else "all enabled"
+        print(f"{name}\t{summary}")
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -209,6 +264,10 @@ def main() -> None:
     sub.add_parser("list-subscriptions")
     sub.add_parser("list-prompts")
     sub.add_parser("list-transcribe-options")
+    sub.add_parser("main-menu-subs")
+
+    ssd = sub.add_parser("show-subscription-detail")
+    ssd.add_argument("--name", required=True)
 
     gs = sub.add_parser("get-subscription-prompts")
     gs.add_argument("--name", required=True)
@@ -248,7 +307,9 @@ def main() -> None:
         "remove-subscription":       cmd_remove_subscription,
         "edit-subscription-prompts": cmd_edit_subscription_prompts,
         "set-queue":                 cmd_set_queue,
-        "set-transcribe-options":    cmd_set_transcribe_options,
+        "set-transcribe-options":      cmd_set_transcribe_options,
+        "show-subscription-detail":    cmd_show_subscription_detail,
+        "main-menu-subs":              cmd_main_menu_subs,
     }[args.cmd](args)
 
 

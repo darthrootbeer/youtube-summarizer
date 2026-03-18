@@ -7,6 +7,23 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.0] — 2026-03-18
+
+### Added
+- Subscriptions listed inline on main menu with prompt summary
+- Subscription detail screen — shows URL, per-prompt on/off status, Edit/Remove/Back actions
+- `live_status()` header line — shows service state, subscription count, queue presence
+- `cmd_show_subscription_detail` and `cmd_main_menu_subs` subcommands in `_config.py`
+
+### Changed
+- Arrow-key navigation throughout (via `gum choose`)
+- `pick_prompts()` shows `[default: on/off]` per item — no separate legend needed
+- Settings: password shows "(Already set)" instead of blank; only overwrites if new value entered
+- Replaced all "Back to main menu?" confirms with `pause()` — press Enter to continue
+- All Python heredocs use single-quoted `<<'PYEOF'` with `sys.argv` for safe variable passing
+
+---
+
 ## [1.1.0] — 2026-03-18
 
 ### Added
@@ -65,6 +82,7 @@ First public release.
 ---
 
 <!-- Links -->
+[1.2.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/darthrootbeer/youtube-summarizer/releases/tag/v1.0.0
