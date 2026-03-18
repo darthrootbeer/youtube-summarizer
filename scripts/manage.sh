@@ -473,6 +473,104 @@ cmd_manage_summarize_queue() {
   done
 }
 
+# ── test mode: roll back one seen video per subscription ──────────────────────
+cmd_test_rollback() {
+  header "Test Mode — Roll Back"
+
+  section "What this does:"
+  dim "Removes the most recently seen video for each subscription from the"
+  dim "database, making the next run treat it as new and re-process it."
+  echo ""
+
+  # Preview what will be rolled back
+  local preview
+  preview=$("$PYTHON" - "$REPO_ROOT" <<'PYEOF'
+import sqlite3, pathlib, sys, tomllib
+
+repo   = pathlib.Path(sys.argv[1])
+db_p   = repo / "data" / "state.db"
+toml_p = repo / "config" / "channels.toml"
+
+if not db_p.exists():
+    print("  (no database yet — nothing to roll back)")
+    sys.exit(0)
+
+with open(toml_p, "rb") as f:
+    cfg = tomllib.load(f)
+
+subs = cfg.get("subscriptions", [])
+if not subs:
+    print("  (no subscriptions configured)")
+    sys.exit(0)
+
+conn = sqlite3.connect(str(db_p))
+for sub in subs:
+    name = (sub.get("name") or "").strip()
+    if not name:
+        continue
+    row = conn.execute(
+        "SELECT video_title, video_id FROM seen_videos "
+        "WHERE channel_name = ? AND video_id NOT LIKE 'transcribe:%' "
+        "ORDER BY first_seen_at DESC LIMIT 1",
+        (name,)
+    ).fetchone()
+    if row:
+        title, vid = row
+        print(f"  ↩  {name}: {title[:55]} ({vid})")
+    else:
+        print(f"  —  {name}: no seen videos")
+conn.close()
+PYEOF
+)
+  echo "$preview"
+  echo ""
+
+  if ! echo "$preview" | grep -q "↩"; then
+    warn "Nothing to roll back."
+    pause
+    return
+  fi
+
+  gum confirm "  Roll back and run now?" || { warn "Cancelled."; return; }
+
+  # Execute rollback
+  echo ""
+  section "Rolling back…"
+  "$PYTHON" - "$REPO_ROOT" <<'PYEOF'
+import sqlite3, pathlib, sys, tomllib
+
+repo   = pathlib.Path(sys.argv[1])
+db_p   = repo / "data" / "state.db"
+toml_p = repo / "config" / "channels.toml"
+
+with open(toml_p, "rb") as f:
+    cfg = tomllib.load(f)
+
+conn = sqlite3.connect(str(db_p))
+for sub in cfg.get("subscriptions", []):
+    name = (sub.get("name") or "").strip()
+    if not name:
+        continue
+    row = conn.execute(
+        "SELECT video_id FROM seen_videos "
+        "WHERE channel_name = ? AND video_id NOT LIKE 'transcribe:%' "
+        "ORDER BY first_seen_at DESC LIMIT 1",
+        (name,)
+    ).fetchone()
+    if row:
+        conn.execute("DELETE FROM seen_videos WHERE video_id = ?", (row[0],))
+        print(f"  ✓  Rolled back: {name}")
+conn.commit()
+conn.close()
+PYEOF
+
+  echo ""
+  section "Running pipeline…"
+  echo ""
+  (cd "$REPO_ROOT" && "$PYTHON" -m youtube_summarizer run)
+  pause
+}
+
 # ── run now ───────────────────────────────────────────────────────────────────
 cmd_run_now() {
   header "Run Now"
@@ -481,7 +579,15 @@ cmd_run_now() {
   mode=$(gum choose \
     --header "  Choose run mode:" \
     "▶️   Normal — process videos and send emails" \
-    "🔍  Dry run — preview only, no emails sent") || return
+    "🔍  Dry run — preview only, no emails sent" \
+    "🧪  Test — re-process latest video per subscription") || return
+
+  case "$mode" in
+    "🧪"*)
+      cmd_test_rollback
+      return
+      ;;
+  esac
 
   local cmd=("$PYTHON" -m youtube_summarizer run)
   [[ "$mode" == "🔍"* ]] && cmd+=("--dry-run")
