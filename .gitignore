@@ -1,5 +1,6 @@
 .DS_Store
 .env
+config/channels.toml
 .claude/
 .venv/
 __pycache__/

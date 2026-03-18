@@ -52,7 +52,19 @@ pip install -r requirements.txt
 
 ---
 
-## 4. Run the setup script
+## 4. Create your personal config
+
+`config/channels.toml` is gitignored so your real channel URLs stay private. Bootstrap it from the example:
+
+```bash
+cp config/channels.example.toml config/channels.toml
+```
+
+`manage.sh` also does this automatically on first run if the file is missing.
+
+---
+
+## 5. Run the setup script
 
 ```bash
 ./scripts/manage.sh
@@ -67,7 +79,7 @@ From the main menu, choose **Settings** and enter:
 
 ---
 
-## 5. Add your channels and queues
+## 6. Add your channels and queues
 
 Still inside `manage.sh`:
 
@@ -87,7 +99,7 @@ Once configured, you can add any YouTube video to these playlists from the YouTu
 
 ---
 
-## 6. Test it
+## 7. Test it
 
 Either from `manage.sh` → **Run now → Dry run** (preview without sending), or directly:
 
@@ -100,7 +112,7 @@ Remove `--dry-run` to send a real email.
 
 ---
 
-## 7. Enable the scheduler (optional but recommended)
+## 8. Enable the scheduler (optional but recommended)
 
 To run automatically every 15 minutes, install the launchd service:
 

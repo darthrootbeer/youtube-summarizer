@@ -77,6 +77,14 @@ def _parse_prompts_field(item: dict) -> list | None:
 
 def load_channels(path: Path | None = None) -> list[Channel]:
     cfg_path = path or (repo_root() / "config" / "channels.toml")
+    if not cfg_path.exists():
+        example = cfg_path.parent / "channels.example.toml"
+        raise FileNotFoundError(
+            f"{cfg_path} not found. "
+            f"Copy the example to get started:\n"
+            f"  cp {example} {cfg_path}\n"
+            f"Then edit it to add your channels and playlist URLs."
+        )
     raw = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
     out: list[Channel] = []
 

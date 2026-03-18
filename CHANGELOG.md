@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.0] — 2026-03-18
+
+### Added
+- `config/channels.example.toml` — committed placeholder template for new installs
+- `manage.sh` auto-copies `channels.example.toml` → `channels.toml` on first run if missing
+- `load_channels()` raises a clear error with copy instructions if `channels.toml` is missing
+
+### Changed
+- `config/channels.toml` is now gitignored — personal channel/playlist URLs never enter the repo
+- SETUP.md: new step 4 documents the manual bootstrap (`cp channels.example.toml channels.toml`)
+- CLAUDE.md: updated "What NOT to commit" and channel config sections
+
+---
+
 ## [1.2.0] — 2026-03-18
 
 ### Added
@@ -82,6 +96,7 @@ First public release.
 ---
 
 <!-- Links -->
+[1.3.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.0.0...v1.0.1

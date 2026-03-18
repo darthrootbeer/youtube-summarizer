@@ -20,6 +20,14 @@ if [ ! -f "$PYTHON" ]; then
   PYTHON="$(command -v python3)"
 fi
 
+# ── first-run bootstrap ───────────────────────────────────────────────────────
+CHANNELS_TOML="$REPO_ROOT/config/channels.toml"
+CHANNELS_EXAMPLE="$REPO_ROOT/config/channels.example.toml"
+if [ ! -f "$CHANNELS_TOML" ] && [ -f "$CHANNELS_EXAMPLE" ]; then
+  cp "$CHANNELS_EXAMPLE" "$CHANNELS_TOML"
+  echo "  Created config/channels.toml from channels.example.toml"
+fi
+
 # ── colours ───────────────────────────────────────────────────────────────────
 ACCENT=212
 DIM=240

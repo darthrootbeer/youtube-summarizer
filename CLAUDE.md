@@ -46,6 +46,10 @@ See `config/prompts/README.md` for the full authoring guide.
 
 ## Channel config
 
+`config/channels.toml` is **gitignored** — personal URLs never leave the machine.
+`config/channels.example.toml` is the committed template (placeholder URLs only).
+`manage.sh` auto-copies the example to `channels.toml` on first run.
+
 `config/channels.toml` — three sections:
 
 ```toml
@@ -153,9 +157,9 @@ Add a `[x.y.z]: <github compare URL>` link at the bottom for each new version.
 ## What NOT to commit
 
 - `.env` — real credentials, always gitignored
+- `config/channels.toml` — personal channel/playlist URLs, always gitignored (edit `channels.example.toml` for template changes)
 - `data/` — SQLite state database, always gitignored
 - `.claude/` — local Claude Code settings, always gitignored
-- Personal YouTube channel/playlist URLs in `config/channels.toml` — use placeholders in the tracked file
 - Hardcoded project paths in `launchd/com.youtube-summarizer.plist` — use `__PROJECT_PATH__` placeholder; SETUP.md has the `sed` install command
 
 ---
