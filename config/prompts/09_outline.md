@@ -8,9 +8,9 @@ label: Outline
 ```prompt
 Output ONLY the outline — no preamble, no intro, no sign-off. Begin with the first label.
 
-List the main sections or topics covered in this transcript. Maximum 8 sections. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets or numbers.
+List exactly {outline_points} main sections or topics covered in this transcript. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets, dashes, or numbers.
 
-Stop after the last label. Do not add anything else.
+Stop after label {outline_points}. Do not add anything else.
 
 Transcript:
 """
@@ -23,9 +23,9 @@ Transcript:
 ```prompt
 Output ONLY the outline — no preamble, no intro, no sign-off. Begin with the first label.
 
-List the main sections or topics covered in this transcript. Maximum 8 sections. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets or numbers.
+List exactly {outline_points} main sections or topics covered in this transcript. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets, dashes, or numbers.
 
-Stop after the last label. Do not add anything else.
+Stop after label {outline_points}. Do not add anything else.
 
 Transcript:
 """
@@ -38,9 +38,9 @@ Transcript:
 ```prompt
 Output ONLY the outline — no preamble, no intro, no sign-off. Begin with the first label.
 
-List the main sections or topics covered in this transcript. Maximum 8 sections. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets or numbers.
+List exactly {outline_points} main sections or topics covered in this transcript. Each entry is a short label only — 3 to 7 words, specific enough to distinguish it from other sections. One label per line. No timestamps. No descriptions. No bullets, dashes, or numbers.
 
-Stop after the last label. Do not add anything else.
+Stop after label {outline_points}. Do not add anything else.
 
 Transcript:
 """

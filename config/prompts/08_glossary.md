@@ -15,12 +15,12 @@ Do NOT define any of these terms — they have been defined recently: {known_ter
 If there are no new terms to define after excluding the above, output exactly:
 No new terms identified.
 
-Otherwise, for each term output exactly:
+Otherwise, format each entry exactly like this example:
 
-**Term**
-One sentence definition written at a 7th grade reading level.
+**NotebookLM**
+Google's AI-powered research tool that lets you upload documents and ask questions about them.
 
-Leave one blank line between terms. Stop after the last definition. Do not add anything else.
+One blank line between entries. Bold the term name. Definition on the next line. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """
@@ -40,12 +40,12 @@ Do NOT define any of these terms — they have been defined recently: {known_ter
 If there are no new terms to define after excluding the above, output exactly:
 No new terms identified.
 
-Otherwise, for each term output exactly:
+Otherwise, format each entry exactly like this example:
 
-**Term**
-One sentence definition written at a 7th grade reading level.
+**NotebookLM**
+Google's AI-powered research tool that lets you upload documents and ask questions about them.
 
-Leave one blank line between terms. Stop after the last definition. Do not add anything else.
+One blank line between entries. Bold the term name. Definition on the next line. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """
@@ -65,12 +65,12 @@ Do NOT define any of these terms — they have been defined recently: {known_ter
 If there are no new terms to define after excluding the above, output exactly:
 No new terms identified.
 
-Otherwise, for each term output exactly:
+Otherwise, format each entry exactly like this example:
 
-**Term**
-One sentence definition written at a 7th grade reading level.
+**NotebookLM**
+Google's AI-powered research tool that lets you upload documents and ask questions about them.
 
-Leave one blank line between terms. Stop after the last definition. Do not add anything else.
+One blank line between entries. Bold the term name. Definition on the next line. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """

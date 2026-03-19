@@ -529,7 +529,8 @@ def _build_email_sections(
     elif "outline" in prompt_map:
         p = prompt_map["outline"]
         tmpl = p.for_tier(tier["tier"])
-        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context)
+        outline_points = _outline_point_count(video_duration_s, len(transcript))
+        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context, outline_points=outline_points)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"outline={_fmt_ms(elapsed)}")
         outline_text = out
@@ -590,6 +591,26 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *,
         except Exception as e:
             log.warning("LLM call failed (%s) — using fallback", e)
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
+
+
+def _outline_point_count(video_duration_s: float | None, transcript_chars: int) -> int:
+    """Map video duration to outline point count. Falls back to transcript length."""
+    if video_duration_s is not None:
+        if video_duration_s < 300:    # < 5 min
+            return 3
+        elif video_duration_s < 900:  # 5–15 min
+            return 5
+        elif video_duration_s < 1800: # 15–30 min
+            return 7
+        else:                         # 30+ min
+            return 10
+    # Fallback: estimate from transcript chars
+    if transcript_chars < 8000:
+        return 3
+    elif transcript_chars < 22000:
+        return 5
+    else:
+        return 7
 
 
 def _opener_sentence_count(video_duration_s: float | None, transcript_chars: int) -> int:
@@ -1059,6 +1080,7 @@ def _format_glossary_html(text: str) -> Markup:
         first = lines[0].strip()
         rest = " ".join(ln.strip() for ln in lines[1:]).strip()
 
+        # Expected format: **Term** on its own line, definition below
         term_m = re.match(r"^\*\*(.+?)\*\*$", first)
         if term_m:
             term = escape(term_m.group(1))
@@ -1068,7 +1090,21 @@ def _format_glossary_html(text: str) -> Markup:
                 f'<p style="margin:0 0 20px 0;color:#4a4f70;">{defn}</p>'
             )
         else:
-            parts.append(f'<p style="margin:0 0 12px 0;">{escape(block)}</p>')
+            # Fallback: term and definition may be on the same line (e.g. "Term definition...")
+            # Try to split on first sentence boundary after a short term-like prefix
+            inline_m = re.match(r"^\*?([A-Z][^.!?]{1,50}?)\*?\s{2,}(.+)$", block)
+            if not inline_m:
+                # Try "Term: definition" or "Term — definition"
+                inline_m = re.match(r"^([A-Z][^:—\n]{1,50}?)[:\s—–]+(.+)$", block, re.DOTALL)
+            if inline_m:
+                term = escape(inline_m.group(1).strip().strip("*"))
+                defn = escape(inline_m.group(2).strip())
+                parts.append(
+                    f'<p style="margin:0 0 4px 0;"><strong style="color:#1e2138;">{term}</strong></p>'
+                    f'<p style="margin:0 0 20px 0;color:#4a4f70;">{defn}</p>'
+                )
+            else:
+                parts.append(f'<p style="margin:0 0 12px 0;">{escape(block)}</p>')
 
     return Markup("\n".join(parts))
 
@@ -1078,11 +1114,13 @@ def _format_outline_html(text: str) -> Markup:
     if not s:
         return Markup("")
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+    # Strip leading bullets/dashes/numbers the model sometimes adds
+    clean_lines = [re.sub(r"^[\-\*\•]\s*|^\d+[\.\)]\s*", "", ln).strip() for ln in lines]
     items = "".join(
-        f'<li style="margin:0 0 8px 0;color:#1e2138;list-style:decimal;">{escape(ln)}</li>'
-        for ln in lines
+        f'<li style="margin:0 0 8px 0;color:#1e2138;">{escape(ln)}</li>'
+        for ln in clean_lines if ln
     )
-    return Markup(f'<ol style="margin:0;padding-left:22px;list-style:decimal;">{items}</ol>')
+    return Markup(f'<ol style="margin:0;padding-left:22px;">{items}</ol>')
 
 
 def _ts_fmt(seconds: int) -> str:
