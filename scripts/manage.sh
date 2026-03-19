@@ -163,7 +163,6 @@ cmd_subscription_detail() {
       --header "  ──────────────────────────────" \
       "✏️   Rename" \
       "🔗  Change URL" \
-      "📋  Change prompts" \
       "🗑   Remove subscription" \
       "←   Back") || return
 
@@ -200,29 +199,6 @@ PYEOF
         [ "$new_url" = "$current_url" ] && { warn "URL unchanged."; continue; }
         "$PYTHON" "$CONFIG" edit-subscription-url --name "$sub_name" --url "$new_url"
         ok "URL updated."
-        pause
-        ;;
-
-      "📋"*)
-        local current_keys
-        current_keys=$("$PYTHON" "$CONFIG" get-subscription-prompts --name "$sub_name" | \
-          "$PYTHON" -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
-        section "Prompts for: $sub_name"
-        local chosen
-        chosen=$(pick_prompts "$current_keys")
-        local prompt_args=()
-        if [ -n "$chosen" ]; then
-          while IFS= read -r line; do
-            local k; k=$(echo "$line" | keys_from_choice)
-            [ -n "$k" ] && prompt_args+=("$k")
-          done <<< "$chosen"
-        fi
-        "$PYTHON" "$CONFIG" edit-subscription-prompts \
-          --name "$sub_name" \
-          ${prompt_args:+--prompts "${prompt_args[@]}"}
-        local pd="all enabled"
-        [ ${#prompt_args[@]} -gt 0 ] && pd="${prompt_args[*]}"
-        ok "Prompts updated → $pd"
         pause
         ;;
 
@@ -263,28 +239,13 @@ cmd_subscribe() {
   fi
   [ -z "$name" ] && { warn "Name is required. Cancelled."; return; }
 
-  section "Which prompts should run for this feed?"
-  local chosen; chosen=$(pick_prompts "")
-  local prompt_args=()
-  if [ -n "$chosen" ]; then
-    while IFS= read -r line; do
-      local k; k=$(echo "$line" | keys_from_choice)
-      [ -n "$k" ] && prompt_args+=("$k")
-    done <<< "$chosen"
-  fi
-  local pd="all enabled"
-  [ ${#prompt_args[@]} -gt 0 ] && pd="${prompt_args[*]}"
-
   echo ""
-  dim "Name:    $name"
-  dim "URL:     $url"
-  dim "Prompts: $pd"
+  dim "Name: $name"
+  dim "URL:  $url"
   echo ""
   gum confirm "  Add this subscription?" || { warn "Cancelled."; return; }
 
-  "$PYTHON" "$CONFIG" add-subscription \
-    --name "$name" --url "$url" \
-    ${prompt_args:+--prompts "${prompt_args[@]}"}
+  "$PYTHON" "$CONFIG" add-subscription --name "$name" --url "$url"
   ok "Subscribed: $name"
   pause
 }

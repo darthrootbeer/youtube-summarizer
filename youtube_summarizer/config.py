@@ -199,6 +199,8 @@ def load_process_prompts(path: Path | None = None) -> list[ProcessPrompt]:
 def _load_process_prompts_from_dir(prompts_dir: Path) -> list[ProcessPrompt]:
     out: list[ProcessPrompt] = []
     for p in sorted(prompts_dir.glob("*.md")):
+        if p.name.upper().startswith("README"):
+            continue
         raw = p.read_text(encoding="utf-8")
         key = _key_from_filename(p.name)
 
