@@ -260,6 +260,12 @@ def run_once(limit: int = 10) -> int:
                 tier = _summary_tier(len(transcript.text))
                 log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
 
+                # Apply per-feed prompt filter if specified in channels.toml
+                effective_prompt_map = prompt_map
+                if ch.prompts:
+                    effective_prompt_map = {k: v for k, v in prompt_map.items() if k in ch.prompts}
+                    log.debug("  per-feed prompts filter: %s → %s", list(prompt_map.keys()), list(effective_prompt_map.keys()))
+
                 # Build all email sections
                 t_sum_total = time.perf_counter()
                 sections, per_prompt_s, enabled_prompt_keys = _build_email_sections(
@@ -267,7 +273,7 @@ def run_once(limit: int = 10) -> int:
                     ollama_model=settings.ollama_model,
                     tier=tier,
                     root=root,
-                    prompt_map=prompt_map,
+                    prompt_map=effective_prompt_map,
                     video_context=video_context,
                     chapters=meta_chapters,
                     video_url=v.url,
@@ -376,31 +382,38 @@ def run_once(limit: int = 10) -> int:
                     f"{_format_beta_stats_text(beta_stats)}\n"
                 )
 
+                email_ok = True
                 if not settings.dry_run:
                     log.info("  sending email: %s", subject)
                     t_send = time.perf_counter()
-                    send_gmail_smtp(
-                        email_from=settings.email_from,
-                        email_to=settings.email_to,
-                        gmail_app_password=settings.gmail_app_password,
-                        content=EmailContent(subject=subject, text=text, html=html),
-                    )
-                    beta_stats = BetaStats(**{**beta_stats.__dict__, "email_send_ms": _ms_since(t_send)})
-                    log.info("  email sent in %s", _fmt_ms(beta_stats.email_send_ms))
-                    beta_stats_view["email_send_s"] = _fmt_seconds(beta_stats.email_send_ms)
-                    total_to_send_s = None
-                    if beta_stats_view["total_before_send_s"] is not None and beta_stats_view["email_send_s"] is not None:
-                        total_to_send_s = round(beta_stats_view["total_before_send_s"] + beta_stats_view["email_send_s"], 2)
-                    beta_stats_view["total_to_send_s"] = total_to_send_s
-                    beta_stats_view["total_processing_s"] = total_to_send_s
-                    _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
+                    try:
+                        send_gmail_smtp(
+                            email_from=settings.email_from,
+                            email_to=settings.email_to,
+                            gmail_app_password=settings.gmail_app_password,
+                            content=EmailContent(subject=subject, text=text, html=html),
+                        )
+                        beta_stats = BetaStats(**{**beta_stats.__dict__, "email_send_ms": _ms_since(t_send)})
+                        log.info("  email sent in %s", _fmt_ms(beta_stats.email_send_ms))
+                        beta_stats_view["email_send_s"] = _fmt_seconds(beta_stats.email_send_ms)
+                        total_to_send_s = None
+                        if beta_stats_view["total_before_send_s"] is not None and beta_stats_view["email_send_s"] is not None:
+                            total_to_send_s = round(beta_stats_view["total_before_send_s"] + beta_stats_view["email_send_s"], 2)
+                        beta_stats_view["total_to_send_s"] = total_to_send_s
+                        beta_stats_view["total_processing_s"] = total_to_send_s
+                        _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
+                    except Exception as e:
+                        email_ok = False
+                        log.error("  email send FAILED for '%s' (%s) — will retry next poll", clean_title, e)
+                        beta_stats_view["qa_notes"] = f"email send failed: {e}"
+                        _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
                 else:
                     log.info("  dry-run: email suppressed for '%s'", clean_title)
                     beta_stats_view["qa_notes"] = "dry-run (no email sent)"
                     beta_stats_view["total_processing_s"] = beta_stats_view.get("total_before_send_s")
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
 
-                if not settings.dry_run:
+                if email_ok and not settings.dry_run:
                     log.debug("  marking seen: %s", v.video_id)
                     db.mark_seen(conn, db.SeenVideo(
                         video_id=v.video_id,
