@@ -161,13 +161,49 @@ cmd_subscription_detail() {
     local action
     action=$(gum choose \
       --header "  ──────────────────────────────" \
-      "✏️   Edit prompts" \
+      "✏️   Rename" \
+      "🔗  Change URL" \
+      "📋  Change prompts" \
       "🗑   Remove subscription" \
       "←   Back") || return
 
     case "$action" in
 
       "✏️"*)
+        section "New name for: $sub_name"
+        local new_name
+        new_name=$(gum input --value "$sub_name" --width 60)
+        [ -z "$new_name" ] && { warn "Cancelled."; continue; }
+        [ "$new_name" = "$sub_name" ] && { warn "Name unchanged."; continue; }
+        "$PYTHON" "$CONFIG" rename-subscription --name "$sub_name" --new-name "$new_name"
+        ok "Renamed → $new_name"
+        sub_name="$new_name"
+        pause
+        ;;
+
+      "🔗"*)
+        section "New URL for: $sub_name"
+        local current_url
+        current_url=$("$PYTHON" - "$REPO_ROOT" "$sub_name" <<'PYEOF'
+import tomllib, sys
+repo, name = sys.argv[1], sys.argv[2]
+with open(f"{repo}/config/channels.toml", "rb") as f:
+    cfg = tomllib.load(f)
+sub = next((s for s in cfg.get("subscriptions", []) if s.get("name") == name), {})
+print(sub.get("url", ""))
+PYEOF
+)
+        local new_url
+        new_url=$(gum input --value "$current_url" \
+          --placeholder "https://www.youtube.com/channel/UC…" --width 68)
+        [ -z "$new_url" ] && { warn "Cancelled."; continue; }
+        [ "$new_url" = "$current_url" ] && { warn "URL unchanged."; continue; }
+        "$PYTHON" "$CONFIG" edit-subscription-url --name "$sub_name" --url "$new_url"
+        ok "URL updated."
+        pause
+        ;;
+
+      "📋"*)
         local current_keys
         current_keys=$("$PYTHON" "$CONFIG" get-subscription-prompts --name "$sub_name" | \
           "$PYTHON" -c "import json,sys; print(' '.join(json.load(sys.stdin)))")

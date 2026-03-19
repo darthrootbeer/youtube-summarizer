@@ -118,6 +118,34 @@ def cmd_edit_subscription_prompts(args) -> None:
     _write_raw(new_raw)
 
 
+def cmd_rename_subscription(args) -> None:
+    raw = _read_raw()
+    escaped = re.escape(args.name)
+    pattern = r"(\[\[subscriptions\]\](?:(?!\n\[).)*?name\s*=\s*\")(" + escaped + r")(\"(?:(?!\n\[).)*)"
+    new_raw = re.sub(pattern, lambda m: m.group(1) + args.new_name + m.group(3), raw, flags=re.S)
+    if new_raw == raw:
+        print(f"ERROR: subscription '{args.name}' not found", file=sys.stderr)
+        sys.exit(1)
+    _write_raw(new_raw)
+
+
+def cmd_edit_subscription_url(args) -> None:
+    raw = _read_raw()
+    escaped = re.escape(args.name)
+
+    def replace_url(m: re.Match) -> str:
+        block = m.group(0)
+        block = re.sub(r'(url\s*=\s*)"[^"]*"', f'url  = {_toml_str(args.url)}', block)
+        return block
+
+    pattern = r"\[\[subscriptions\]\](?:(?!\n\[).)*?name\s*=\s*\"" + escaped + r"\"(?:(?!\n\[).)*"
+    new_raw = re.sub(pattern, replace_url, raw, flags=re.S)
+    if new_raw == raw:
+        print(f"ERROR: subscription '{args.name}' not found", file=sys.stderr)
+        sys.exit(1)
+    _write_raw(new_raw)
+
+
 # ── queues ────────────────────────────────────────────────────────────────────
 
 def cmd_set_queue(args) -> None:
@@ -294,6 +322,14 @@ def main() -> None:
     rm = sub.add_parser("remove-subscription")
     rm.add_argument("--name", required=True)
 
+    rn = sub.add_parser("rename-subscription")
+    rn.add_argument("--name", required=True)
+    rn.add_argument("--new-name", required=True)
+
+    eu = sub.add_parser("edit-subscription-url")
+    eu.add_argument("--name", required=True)
+    eu.add_argument("--url", required=True)
+
     ep = sub.add_parser("edit-subscription-prompts")
     ep.add_argument("--name", required=True)
     ep.add_argument("--prompts", nargs="*", default=[])
@@ -320,6 +356,8 @@ def main() -> None:
         "clear-queue":               cmd_clear_queue,
         "add-subscription":          cmd_add_subscription,
         "remove-subscription":       cmd_remove_subscription,
+        "rename-subscription":       cmd_rename_subscription,
+        "edit-subscription-url":     cmd_edit_subscription_url,
         "edit-subscription-prompts": cmd_edit_subscription_prompts,
         "set-queue":                 cmd_set_queue,
         "set-transcribe-options":      cmd_set_transcribe_options,
