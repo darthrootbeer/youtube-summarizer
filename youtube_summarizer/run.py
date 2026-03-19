@@ -809,7 +809,22 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
                     )
                     out = (res.stdout or "").strip()
                     if out:
-                        return out
+                        ratio = len(out) / max(len(t), 1)
+                        out_lower = out.lower()
+                        hallucinated = (
+                            ratio < 0.4
+                            or out_lower.startswith("from the transcript")
+                            or out_lower.startswith("in summary")
+                            or "here are some key points" in out_lower
+                            or "let me know if" in out_lower
+                        )
+                        if hallucinated:
+                            log.warning(
+                                "Transcript LLM cleanup looks like a summary (ratio=%.2f) — using deterministic output",
+                                ratio,
+                            )
+                        else:
+                            return out
                 except Exception as e:
                     log.warning("Transcript LLM cleanup failed (%s) — using deterministic output", e)
 
@@ -1130,12 +1145,12 @@ def _fmt_published_at(published_at: str) -> str:
     eastern = ZoneInfo("America/New_York")
     try:
         dt = parsedate_to_datetime(published_at).astimezone(eastern)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
+        return dt.strftime("%A %Y-%m-%d %H:%M")
     except Exception:
         pass
     try:
         dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(eastern)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
+        return dt.strftime("%A %Y-%m-%d %H:%M")
     except Exception:
         pass
     return published_at
