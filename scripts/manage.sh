@@ -800,9 +800,9 @@ cmd_manage_subscriptions() {
     local items=()
     items+=("➕  Add subscription")
 
-    while IFS=$'\t' read -r sub_name sub_prompts; do
+    while IFS= read -r sub_name; do
       [ -z "$sub_name" ] && continue
-      items+=("📺  $sub_name  ·  $sub_prompts")
+      items+=("📺  $sub_name")
     done < <("$PYTHON" "$CONFIG" main-menu-subs 2>/dev/null || true)
 
     items+=("←   Back")
@@ -816,7 +816,7 @@ cmd_manage_subscriptions() {
         ;;
       "📺"*)
         local sub_name
-        sub_name=$(echo "$choice" | sed 's/^📺  //' | sed 's/  ·  .*//')
+        sub_name=$(echo "$choice" | sed 's/^📺  //')
         cmd_subscription_detail "$sub_name"
         ;;
       "←"*) return ;;

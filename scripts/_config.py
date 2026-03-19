@@ -267,13 +267,10 @@ def cmd_show_subscription_detail(args) -> None:
 
 
 def cmd_main_menu_subs(_args) -> None:
-    """Print subscription items for the main menu, one per line: 'NAME\tPROMPT_SUMMARY'"""
+    """Print subscription names for the main menu, one per line."""
     cfg = _read_cfg()
     for s in cfg.get("subscriptions", []):
-        name = s.get("name", "(unnamed)")
-        prompts = s.get("prompts") or []
-        summary = ", ".join(prompts) if prompts else "all enabled"
-        print(f"{name}\t{summary}")
+        print(s.get("name", "(unnamed)"))
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
