@@ -902,7 +902,9 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None, 
                             ratio < 0.4
                             or out_lower.startswith("from the transcript")
                             or out_lower.startswith("in summary")
+                            or out_lower.startswith("based on the")
                             or "here are some key points" in out_lower
+                            or "here are some key takeaways" in out_lower
                             or "let me know if" in out_lower
                         )
                         if hallucinated:
