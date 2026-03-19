@@ -1148,6 +1148,9 @@ def _ts_fmt(seconds: int) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+_CHAPTER_TITLE_MAX = 52  # characters before truncation with ellipsis
+
+
 def _format_chapters_outline_html(chapters: list, video_url: str) -> str:
     """Render creator chapters as a linked list with timestamp URLs."""
     # Build base URL for timestamp anchors: strip existing &t= if present
@@ -1158,7 +1161,10 @@ def _format_chapters_outline_html(chapters: list, video_url: str) -> str:
         t = int(ch.get("start_time") or 0)
         ts_url = f"{base}{sep}t={t}"
         ts_display = _ts_fmt(t)
-        title = escape(ch.get("title", "").strip())
+        raw_title = ch.get("title", "").strip()
+        if len(raw_title) > _CHAPTER_TITLE_MAX:
+            raw_title = raw_title[:_CHAPTER_TITLE_MAX].rstrip() + "\u2026"
+        title = escape(raw_title)
         items.append(
             f'<span style="color:#9096bb;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">'
             f'<a href="{ts_url}" style="color:#9096bb;text-decoration:none;">{ts_display}</a>'
