@@ -260,10 +260,17 @@ def run_once(limit: int = 10) -> int:
                 tier = _summary_tier(len(transcript.text))
                 log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
 
-                # Apply per-feed prompt filter if specified in channels.toml
+                # Apply per-feed prompt filter if specified in channels.toml.
+                # "default" is a legacy alias meaning the core pipeline (opener + summary).
                 effective_prompt_map = prompt_map
                 if ch.prompts:
-                    effective_prompt_map = {k: v for k, v in prompt_map.items() if k in ch.prompts}
+                    expanded: set[str] = set()
+                    for key in ch.prompts:
+                        if key == "default":
+                            expanded.update(["opener", "summary"])
+                        else:
+                            expanded.add(key)
+                    effective_prompt_map = {k: v for k, v in prompt_map.items() if k in expanded}
                     log.debug("  per-feed prompts filter: %s → %s", list(prompt_map.keys()), list(effective_prompt_map.keys()))
 
                 # Build all email sections
