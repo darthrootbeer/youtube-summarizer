@@ -34,7 +34,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from youtube_summarizer import db
-from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped
+from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped, get_queue_state, save_queue_state
 from youtube_summarizer.config import (
     load_channels,
     load_process_prompts,
@@ -179,10 +179,26 @@ def run_once(limit: int = 10) -> int:
                 "transcribe_queue": "Transcribe Queue",
             }.get(ch.source_type, ch.source_type)
 
+            # For queue sources: track membership between polls so re-added
+            # videos (removed then re-added by the user) get reprocessed.
+            is_queue = ch.source_type == "summarize_queue"
+            prev_queue_ids: set[str] = set()
+            if is_queue:
+                prev_queue_ids = get_queue_state(conn, ch.url)
+                current_queue_ids = {v.video_id for v in videos}
+                save_queue_state(conn, ch.url, current_queue_ids)
+                log.debug("Queue state: %d prev, %d current", len(prev_queue_ids), len(current_queue_ids))
+
             for v in videos:
                 if remaining <= 0:
                     break
-                if db.has_seen(conn, v.video_id):
+                if is_queue:
+                    # New entry = wasn't in the queue last poll (re-added or genuinely new)
+                    was_in_queue_before = v.video_id in prev_queue_ids
+                    if was_in_queue_before and db.has_seen(conn, v.video_id):
+                        log.debug("  skip (queue, already processed): %s", v.title)
+                        continue
+                elif db.has_seen(conn, v.video_id):
                     log.debug("  skip (already seen): %s", v.title)
                     continue
 
