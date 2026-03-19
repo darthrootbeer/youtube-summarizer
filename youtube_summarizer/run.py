@@ -4,6 +4,7 @@ import logging
 import os
 import json
 import re
+import resource
 import subprocess
 import sys
 import time
@@ -69,10 +70,12 @@ class BetaStats:
     rss_fetch_ms: int | None
     audio_download_ms: int | None
     audio_bytes: int | None
+    audio_duration_s: float | None
     transcribe_ms: int | None
     summarize_ms: int | None
     email_render_ms: int | None
     email_send_ms: int | None
+    avg_cpu_pct: float | None
     total_ms: int
 
 
@@ -192,6 +195,7 @@ def run_once(limit: int = 10) -> int:
                 clean_title = _strip_hashtags(v.title)
                 log.info("Processing [%s] '%s' — %s", ch.source_type, clean_title, v.video_id)
                 t_total = time.perf_counter()
+                ru_start = resource.getrusage(resource.RUSAGE_SELF)
                 summary_id = _new_summary_id(v.video_id)
 
                 log.debug("  fetching transcript via %s ...", settings.transcribe_backend)
@@ -238,6 +242,11 @@ def run_once(limit: int = 10) -> int:
 
                 subject = f"[S] {clean_title}"
 
+                ru_end = resource.getrusage(resource.RUSAGE_SELF)
+                wall_s = time.perf_counter() - t_total
+                cpu_s = (ru_end.ru_utime - ru_start.ru_utime) + (ru_end.ru_stime - ru_start.ru_stime)
+                avg_cpu_pct = round(cpu_s / wall_s * 100, 1) if wall_s > 0 else None
+
                 beta_stats = BetaStats(
                     video_id=v.video_id,
                     summary_id=summary_id,
@@ -247,10 +256,12 @@ def run_once(limit: int = 10) -> int:
                     rss_fetch_ms=rss_fetch_ms,
                     audio_download_ms=transcript_stats.audio_download_ms,
                     audio_bytes=transcript_stats.audio_bytes,
+                    audio_duration_s=transcript_stats.audio_duration_s,
                     transcribe_ms=transcript_stats.transcribe_ms,
                     summarize_ms=summarize_ms,
                     email_render_ms=None,
                     email_send_ms=None,
+                    avg_cpu_pct=avg_cpu_pct,
                     total_ms=0,
                 )
                 beta_stats_view = {
@@ -268,8 +279,10 @@ def run_once(limit: int = 10) -> int:
                     "rss_fetch_s": _fmt_seconds(beta_stats.rss_fetch_ms),
                     "media_size_mb": _fmt_mb(beta_stats.audio_bytes),
                     "download_media_s": _fmt_seconds(beta_stats.audio_download_ms),
+                    "video_duration_s": beta_stats.audio_duration_s,
                     "transcribe_s": _fmt_seconds(beta_stats.transcribe_ms),
                     "summarize_s": _fmt_seconds(beta_stats.summarize_ms),
+                    "avg_cpu_pct": beta_stats.avg_cpu_pct,
                     "email_render_s": None,
                     "email_send_s": None,
                     "total_before_send_s": None,
@@ -278,6 +291,7 @@ def run_once(limit: int = 10) -> int:
                 }
 
                 published_at_display = _fmt_published_at(v.published_at)
+                video_duration_display = _fmt_duration(transcript_stats.audio_duration_s)
                 render_ctx = dict(
                     subject=subject,
                     source_label=source_label,
@@ -288,6 +302,7 @@ def run_once(limit: int = 10) -> int:
                     sections=sections,
                     published_at=v.published_at,
                     published_at_display=published_at_display,
+                    video_duration_display=video_duration_display,
                     beta_stats=beta_stats_view,
                 )
 
@@ -594,6 +609,7 @@ class _TranscriptStats:
     transcript_source: str
     audio_download_ms: int | None
     audio_bytes: int | None
+    audio_duration_s: float | None
     transcribe_ms: int | None
 
 
@@ -614,7 +630,7 @@ def _get_transcript(
         if yt:
             return (
                 TranscriptResult(text=yt, source="youtube"),
-                _TranscriptStats(transcript_source="youtube", audio_download_ms=None, audio_bytes=None, transcribe_ms=None),
+                _TranscriptStats(transcript_source="youtube", audio_download_ms=None, audio_bytes=None, audio_duration_s=None, transcribe_ms=None),
             )
 
     backend = (transcribe_backend or "").strip()
@@ -648,6 +664,17 @@ def _get_transcript(
     if not Path(audio_path).exists():
         raise RuntimeError("Audio download failed (expected .m4a output).")
     audio_bytes = Path(audio_path).stat().st_size
+
+    audio_duration_s: float | None = None
+    try:
+        _dur = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+            capture_output=True, text=True, timeout=15,
+        )
+        audio_duration_s = float(_dur.stdout.strip())
+    except Exception:
+        pass
 
     transcript_text = ""
     source = "parakeet"
@@ -707,6 +734,7 @@ def _get_transcript(
             transcript_source=source,
             audio_download_ms=audio_download_ms,
             audio_bytes=audio_bytes,
+            audio_duration_s=audio_duration_s,
             transcribe_ms=transcribe_ms,
         ),
     )
@@ -1137,6 +1165,20 @@ def _child_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Date formatting
 # ---------------------------------------------------------------------------
+
+def _fmt_duration(seconds: float | None) -> str | None:
+    if not seconds:
+        return None
+    s = int(seconds)
+    if s < 60:
+        return f"{s} sec"
+    if s < 3600:
+        m = round(s / 60)
+        return f"{m} min"
+    h, rem = divmod(s, 3600)
+    m = round(rem / 60)
+    return f"{h} hr {m} min" if m else f"{h} hr"
+
 
 def _fmt_published_at(published_at: str) -> str:
     if not published_at:

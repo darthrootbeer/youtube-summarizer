@@ -46,6 +46,9 @@
             {% if published_at_display %}
             &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<span>{{ published_at_display }}</span>
             {% endif %}
+            {% if video_duration_display %}
+            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<span>{{ video_duration_display }}</span>
+            {% endif %}
             &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<a href="{{ video_url }}" style="color:#4b6cf6;text-decoration:none;font-weight:500;">Watch&nbsp;video&nbsp;&#8599;</a>
           </span>
         </div>
@@ -104,8 +107,10 @@ ollama_model: {{ beta_stats.ollama_model or "n/a" }}
 rss_fetch_s: {{ beta_stats.rss_fetch_s or "n/a" }}
 media_size_mb: {{ beta_stats.media_size_mb or "n/a" }}
 download_media_s: {{ beta_stats.download_media_s or "n/a" }}
+video_duration_s: {{ beta_stats.video_duration_s | round(1) if beta_stats.video_duration_s else "n/a" }}
 transcribe_s: {{ beta_stats.transcribe_s or "n/a" }}
 summarize_s: {{ beta_stats.summarize_s or "n/a" }}
+avg_cpu_pct: {{ beta_stats.avg_cpu_pct or "n/a" }}
 email_render_s: {{ beta_stats.email_render_s or "n/a" }}
 email_send_s: {{ beta_stats.email_send_s or "n/a" }}
 total_before_send_s: {{ beta_stats.total_before_send_s or "n/a" }}
