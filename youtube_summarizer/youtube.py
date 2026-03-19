@@ -17,6 +17,7 @@ class Video:
     url: str
     title: str
     published_at: str
+    channel_name: str | None = None
 
 
 _CHANNEL_ID_RE = re.compile(r"(?:youtube\.com/)?channel/(UC[a-zA-Z0-9_-]{20,})")
@@ -90,7 +91,10 @@ def fetch_latest_videos_from_rss(rss_url: str, limit: int = 10) -> list[Video]:
         if not video_id or not link:
             continue
 
-        videos.append(Video(video_id=video_id, url=link, title=title, published_at=published_at))
+        author_detail = getattr(entry, "author_detail", None)
+        channel_name = str(getattr(author_detail, "name", "") or "").strip() or None
+
+        videos.append(Video(video_id=video_id, url=link, title=title, published_at=published_at, channel_name=channel_name))
 
     return videos
 

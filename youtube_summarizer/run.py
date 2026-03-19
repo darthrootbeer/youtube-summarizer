@@ -23,7 +23,7 @@ def setup_logging() -> None:
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        datefmt="%H:%M:%S",
         force=True,
     )
     log.debug("Logging initialised at level %s", level_name)
@@ -197,6 +197,13 @@ def run_once(limit: int = 10) -> int:
                     log.debug("  skip (already seen): %s", v.title)
                     continue
 
+                # For queue sources, each video may come from a different channel.
+                # Use the per-video channel name from RSS if available; fall back to feed-level name.
+                if ch.source_type in ("summarize_queue", "transcribe_queue") and v.channel_name:
+                    video_channel_name = v.channel_name
+                else:
+                    video_channel_name = effective_channel_name
+
                 log.info("Processing [%s] '%s' — %s", ch.source_type, v.title, v.video_id)
                 t_total = time.perf_counter()
                 summary_id = _new_summary_id(v.video_id)
@@ -221,7 +228,7 @@ def run_once(limit: int = 10) -> int:
                         db.mark_seen(conn, db.SeenVideo(
                             video_id=seen_id,
                             video_url=v.url,
-                            channel_name=effective_channel_name,
+                            channel_name=video_channel_name,
                             video_title=v.title,
                             published_at=v.published_at,
                         ))
@@ -256,7 +263,15 @@ def run_once(limit: int = 10) -> int:
                     tier = _summary_tier(len(transcript.text))
                     log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
                     enabled_prompt_keys = [p.key for p in channel_prompts]
-                    for p in channel_prompts:
+                    n_prompts = len(channel_prompts)
+                    log.info(
+                        "  Summarizing with %s — %d prompt(s), %s tier ...",
+                        settings.ollama_model or "no model",
+                        n_prompts,
+                        tier["tier"],
+                    )
+                    for i, p in enumerate(channel_prompts, 1):
+                        log.info("  [%d/%d] %s ...", i, n_prompts, p.key)
                         log.debug("  running prompt '%s' via ollama=%s ...", p.key, settings.ollama_model or "off")
                         t_sum = time.perf_counter()
                         tmpl = p.for_tier(tier["tier"])
@@ -265,6 +280,7 @@ def run_once(limit: int = 10) -> int:
                             out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model, min_bullets=int(tier["bullet_count"]))
                         elapsed = _ms_since(t_sum)
                         per_prompt_s.append(f"{p.key}={_fmt_ms(elapsed)}")
+                        log.info("  [%d/%d] %s done in %s", i, n_prompts, p.key, _fmt_ms(elapsed))
                         log.debug("  prompt '%s' done in %s (%d chars out)", p.key, _fmt_ms(elapsed), len(out))
                         sections.append(
                             {
@@ -284,7 +300,7 @@ def run_once(limit: int = 10) -> int:
                 elif ch.source_type == "transcribe_queue":
                     subject = f"{settings.subject_prefix}[TRANSCRIPTION] {v.title}"
                 else:
-                    subject = f"{settings.subject_prefix}[SUB] {effective_channel_name} — {v.title}"
+                    subject = f"{settings.subject_prefix}[SUB] {video_channel_name} — {v.title}"
                 beta_stats = BetaStats(
                     video_id=v.video_id,
                     summary_id=summary_id,
@@ -329,10 +345,10 @@ def run_once(limit: int = 10) -> int:
                 render_ctx = dict(
                     subject=subject,
                     source_label=source_label,
-                    source_name=effective_channel_name,
+                    source_name=video_channel_name,
                     video_title=v.title,
                     video_url=v.url,
-                    thumbnail_url=f"https://img.youtube.com/vi/{v.video_id}/hqdefault.jpg",
+                    thumbnail_url=f"https://img.youtube.com/vi/{v.video_id}/maxresdefault.jpg",
                     sections=sections,
                     transcript_source=transcript.source,
                     published_at=v.published_at,
@@ -356,7 +372,7 @@ def run_once(limit: int = 10) -> int:
                 _write_summary_artifact(
                     root=root,
                     summary_id=summary_id,
-                    channel_name=effective_channel_name,
+                    channel_name=video_channel_name,
                     video_title=v.title,
                     video_url=v.url,
                     video_id=v.video_id,
@@ -368,7 +384,7 @@ def run_once(limit: int = 10) -> int:
                     beta_stats=beta_stats,
                 )
                 text = (
-                    f"{effective_channel_name}\n{v.title}\n{v.url}\n\n"
+                    f"{video_channel_name}\n{v.title}\n{v.url}\n\n"
                     f"{_format_sections_text(sections)}\n\n"
                     f"Transcript source: {transcript.source}\n\n"
                     f"{_format_beta_stats_text(beta_stats)}\n"
@@ -407,7 +423,7 @@ def run_once(limit: int = 10) -> int:
                         db.SeenVideo(
                             video_id=seen_id,
                             video_url=v.url,
-                            channel_name=effective_channel_name,
+                            channel_name=video_channel_name,
                             video_title=v.title,
                             published_at=v.published_at,
                         ),
@@ -546,6 +562,21 @@ def _get_transcript(
     transcribe_ms: int | None = None
 
     if backend == "parakeet_mlx":
+        # Convert to 16kHz mono WAV — the native format Parakeet expects.
+        # Feeding m4a directly forces internal decode+resample on every run,
+        # which is the main cause of slow transcription times.
+        wav_path = str(out_base) + "_16k.wav"
+        _run(
+            [
+                "ffmpeg", "-y",
+                "-i", audio_path,
+                "-ar", "16000",
+                "-ac", "1",
+                "-c:a", "pcm_s16le",
+                wav_path,
+            ]
+        )
+
         # `parakeet-mlx` writes outputs to files; we read the .txt output.
         out_dir = audio_dir / "parakeet"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -554,7 +585,7 @@ def _get_transcript(
         _run(
             [
                 "parakeet-mlx",
-                audio_path,
+                wav_path,
                 "--model",
                 parakeet_model,
                 "--output-dir",
@@ -568,6 +599,13 @@ def _get_transcript(
         transcribe_ms = _ms_since(t_tx)
         txt_path = out_dir / f"{out_path_no_ext.name}.txt"
         transcript_text = txt_path.read_text(encoding="utf-8").strip() if txt_path.exists() else ""
+
+        # Remove the temporary wav — the source m4a is kept for re-runs.
+        try:
+            Path(wav_path).unlink()
+        except OSError:
+            pass
+
         source = "parakeet"
 
     if backend == "whisper_cpp":
@@ -655,19 +693,21 @@ def _child_env() -> dict[str, str]:
 
 
 def _fmt_published_at(published_at: str) -> str:
-    """Parse and format a video's published date for display in emails."""
+    """Parse and format a video's published date for display in emails (Eastern time)."""
     if not published_at:
         return ""
+    from zoneinfo import ZoneInfo
+    eastern = ZoneInfo("America/New_York")
     # Try RFC 2822 (feedparser default: "Thu, 13 Mar 2025 14:30:00 +0000")
     try:
-        dt = parsedate_to_datetime(published_at).astimezone(timezone.utc)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+        dt = parsedate_to_datetime(published_at).astimezone(eastern)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
     except Exception:
         pass
     # Try ISO 8601
     try:
-        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(timezone.utc)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(eastern)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
     except Exception:
         pass
     return published_at
@@ -926,12 +966,18 @@ def _format_summary_html(summary: str) -> Markup:
     in_list = False
     para_buf: list[str] = []
 
+    def _apply_inline(text: str) -> str:
+        """Apply **bold** markers after HTML-escaping."""
+        import re
+        escaped = str(escape(text))
+        return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
+
     def flush_paragraph() -> None:
         nonlocal para_buf
         text = " ".join(x.strip() for x in para_buf if x.strip()).strip()
         para_buf = []
         if text:
-            html_parts.append(f"<p style=\"margin:0 0 10px 0;\">{escape(text)}</p>")
+            html_parts.append(f"<p style=\"margin:0 0 10px 0;\">{_apply_inline(text)}</p>")
 
     for raw in lines:
         line = raw.strip()
@@ -959,7 +1005,7 @@ def _format_summary_html(summary: str) -> Markup:
             if not in_list:
                 html_parts.append("<ul style=\"margin:0 0 10px 18px; padding:0;\">")
                 in_list = True
-            html_parts.append(f"<li style=\"margin:0 0 6px 0;\">{escape(line[2:].strip())}</li>")
+            html_parts.append(f"<li style=\"margin:0 0 6px 0;\">{_apply_inline(line[2:].strip())}</li>")
             continue
 
         if in_list:
@@ -1263,6 +1309,7 @@ def _fetch_videos_via_ytdlp_playlist(
             break
         vid = str((e or {}).get("id") or "").strip()
         title = str((e or {}).get("title") or "").strip() or "Untitled"
+        channel_name = str((e or {}).get("uploader") or (e or {}).get("channel") or "").strip() or None
         if not vid:
             continue
         out.append(
@@ -1274,6 +1321,7 @@ def _fetch_videos_via_ytdlp_playlist(
                     "url": f"https://www.youtube.com/watch?v={vid}",
                     "title": title,
                     "published_at": now_iso,
+                    "channel_name": channel_name,
                 },
             )()
         )
