@@ -34,6 +34,27 @@
 
 ## Backlog
 
-- [ ] Re-check yt-dlp n-challenge issue once upstream fixes land (see PROJECT_STATUS.md)
-- [ ] `manage.sh` — restart service after config changes
-- [ ] **Video description links block** — extract URLs and structured content from the yt-dlp `description` field (already fetched). Render as an email block between Summary and Glossary: linked URLs, timestamp links (already available via `chapters`), any named people or resources. Plain-text description is in `meta.get("description")` — no additional scraping needed now that metadata fetch is in place.
+### Output quality
+
+- [ ] **Use duration as primary summary tier signal** — replace transcript char-count tier boundaries (8k/22k) with video duration (already in `meta_duration_s`). Speaking pace varies; a dense 7-min tutorial and a slow 7-min chat produce wildly different char counts. Transcript chars become the fallback only.
+- [ ] **Increase transcript compaction tail** — `_compact_transcript()` keeps 14k head + 2.5k tail. For podcasts/interviews the key content is often in the middle. Raise tail to 5k and add a `truncated=true` flag to debug stats when compaction fires.
+- [ ] **Short video outline guard** — `_outline_point_count()` returns 3 for videos < 5 min, but a 60-second clip has no structure. Skip outline entirely if `video_duration_s < 120`.
+- [ ] **Video description links block** — extract URLs and structured content from the yt-dlp `description` field (already fetched). Render as an email block between Summary and Glossary: linked URLs, timestamp links, named people or resources. `meta.get("description")` is already available.
+
+### Reliability
+
+- [ ] **LLM retry on timeout** — `_run_llm()` and `_summarize()` immediately fall back on any exception. Add one retry with a short delay before falling back; most Ollama timeouts are transient.
+- [ ] **Log fallback decisions in debug stats** — when hallucination guards or fallbacks fire, record which section triggered and why in `beta_stats.qa_notes` so it's visible in the email artifact without digging through logs.
+- [ ] **Parallel RSS fetches** — 14 channels means 14 sequential HTTP requests before anything processes. Use `ThreadPoolExecutor` to fetch all feeds concurrently; should cut poll startup time by ~10×.
+- [ ] **Deleted/unavailable video handling** — when yt-dlp fails with a 404/unavailable error, log a clear warning and continue. Currently the error propagates and may block the rest of the batch.
+
+### Technical debt
+
+- [ ] **Magic numbers → named constants** — `14000`/`2500` (compaction), `8000`/`22000` (tier boundaries), `600`/`120` (timeouts), `4000` (glossary max length), `52` (chapter title max) are all inline. Move to named constants at the top of `run.py`.
+- [ ] **Channel name auto-update uses regex on raw TOML** — `_best_effort_update_channel_name_in_config()` rewrites `channels.toml` with string regex. Fragile on edge-case TOML syntax. Rewrite using `tomllib` parse + serialise round-trip via `_config.py`.
+- [ ] **`manage.sh` — restart service after config changes** — currently requires manual `launchctl` after editing channels or settings via the TUI.
+
+### Lower priority
+
+- [ ] **Glossary definition length guard** — if any single glossary definition block exceeds ~300 chars, reject the entire glossary output as hallucinated (model echoed the transcript). Currently only the total length (4000 chars) is checked.
+- [ ] **Re-check yt-dlp n-challenge issue** — once upstream fixes land (see PROJECT_STATUS.md).
