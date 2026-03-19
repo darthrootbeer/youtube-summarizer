@@ -271,6 +271,7 @@ def run_once(limit: int = 10) -> int:
                     video_context=video_context,
                     chapters=meta_chapters,
                     video_url=v.url,
+                    video_duration_s=meta_duration_s or transcript_stats.audio_duration_s,
                 )
                 summarize_ms = _ms_since(t_sum_total)
 
@@ -443,6 +444,7 @@ def _build_email_sections(
     video_context: str | None = None,
     chapters: list | None = None,
     video_url: str = "",
+    video_duration_s: float | None = None,
 ) -> tuple[list[dict], list[str], list[str]]:
     """
     Builds all 5 email sections in fixed order:
@@ -459,7 +461,8 @@ def _build_email_sections(
         log.info("  [1/5] opener ...")
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
-        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context)
+        sentence_count = _opener_sentence_count(video_duration_s, len(transcript))
+        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context, sentence_count=sentence_count)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"opener={_fmt_ms(elapsed)}")
         enabled_keys.append("opener")
@@ -572,7 +575,7 @@ def _build_email_sections(
 # LLM helpers
 # ---------------------------------------------------------------------------
 
-def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None) -> str:
+def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None, **extra_vars) -> str:
     """Run a prompt through Ollama with compacted transcript. Falls back to first 500 chars."""
     if ollama_model:
         try:
@@ -582,10 +585,31 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *,
                 prompt_template=prompt_template,
                 compact=True,
                 video_context=video_context,
+                **extra_vars,
             )
         except Exception as e:
             log.warning("LLM call failed (%s) — using fallback", e)
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
+
+
+def _opener_sentence_count(video_duration_s: float | None, transcript_chars: int) -> int:
+    """Map video duration to opener sentence count. Falls back to transcript length."""
+    if video_duration_s is not None:
+        if video_duration_s < 300:   # < 5 min
+            return 1
+        elif video_duration_s < 900:  # 5–15 min
+            return 2
+        elif video_duration_s < 1800: # 15–30 min
+            return 3
+        else:                         # 30+ min
+            return 4
+    # Fallback: estimate from transcript chars
+    if transcript_chars < 8000:
+        return 1
+    elif transcript_chars < 22000:
+        return 2
+    else:
+        return 3
 
 
 def _summarize(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None) -> str:

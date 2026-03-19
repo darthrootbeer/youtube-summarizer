@@ -6,11 +6,11 @@ label: Opener
 ## short
 
 ```prompt
-Output ONLY one sentence — no preamble, no label, no sign-off. Begin immediately with the sentence.
+Output ONLY {sentence_count} sentence(s) — no preamble, no label, no sign-off. Begin immediately with the first word of the content.
 
-Distill this transcript into a single polished, universal takeaway. Write it as the one idea worth remembering — not a description of what was discussed, not "the speaker says," not a personal reflection. Boil the content down to its underlying advice or insight, combining all examples into one coherent, memorable sentence that stands alone.
+Write {sentence_count} polished sentence(s) that give a complete, self-contained picture of this video. Each sentence must carry a distinct, essential idea — together they should let someone fully grasp the context and value of the content without watching. Do not describe what was covered. Do not write "the speaker says" or "this video explains." Write the actual insight, argument, or advice directly, in plain declarative prose.
 
-Stop after the sentence. Do not add anything else.
+Stop after sentence {sentence_count}. Do not add anything else.
 
 Transcript:
 """
@@ -21,11 +21,11 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY one sentence — no preamble, no label, no sign-off. Begin immediately with the sentence.
+Output ONLY {sentence_count} sentence(s) — no preamble, no label, no sign-off. Begin immediately with the first word of the content.
 
-Distill this transcript into a single polished, universal takeaway. Write it as the one idea worth remembering — not a description of what was discussed, not "the speaker says," not a personal reflection. Boil the content down to its underlying advice or insight, combining all examples and threads into one coherent, memorable sentence that stands alone without context.
+Write {sentence_count} polished sentence(s) that give a complete, self-contained picture of this video. Each sentence must carry a distinct, essential idea — together they should let someone fully grasp the context and value of the content without watching. Do not describe what was covered. Do not write "the speaker says" or "this video explains." Write the actual insight, argument, or advice directly, in plain declarative prose.
 
-Stop after the sentence. Do not add anything else.
+Stop after sentence {sentence_count}. Do not add anything else.
 
 Transcript:
 """
@@ -36,11 +36,11 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY one sentence — no preamble, no label, no sign-off. Begin immediately with the sentence.
+Output ONLY {sentence_count} sentence(s) — no preamble, no label, no sign-off. Begin immediately with the first word of the content.
 
-Distill this transcript into a single polished, universal takeaway. Write it as the one idea worth remembering across the entire content — not a description, not a list, not "the speaker argues." Synthesize the core thesis and its most important implication into one coherent, memorable sentence that stands alone without context.
+Write {sentence_count} polished sentence(s) that give a complete, self-contained picture of this video. Each sentence must carry a distinct, essential idea — together they should let someone fully grasp the context, core argument, and key implications without watching. Do not describe what was covered. Do not write "the speaker says" or "this video explains." Write the actual insight, argument, or advice directly, in plain declarative prose. Sequence the sentences so the most important idea comes first.
 
-Stop after the sentence. Do not add anything else.
+Stop after sentence {sentence_count}. Do not add anything else.
 
 Transcript:
 """
