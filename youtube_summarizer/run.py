@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import json
+import re
 import subprocess
 import sys
 import time
@@ -17,7 +18,6 @@ log = logging.getLogger("youtube_summarizer")
 
 
 def setup_logging() -> None:
-    """Configure logging from YTS_LOG_LEVEL env var (default INFO, DEBUG for full audit trail)."""
     level_name = os.environ.get("YTS_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     logging.basicConfig(
@@ -28,9 +28,9 @@ def setup_logging() -> None:
     )
     log.debug("Logging initialised at level %s", level_name)
 
+
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
-import re
 
 from youtube_summarizer import db
 from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped
@@ -43,6 +43,7 @@ from youtube_summarizer.config import (
     repo_root,
 )
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
+from youtube_summarizer.glossary import get_skip_terms, save_new_terms
 from youtube_summarizer.summarizer import summarize_fallback, summarize_with_ollama
 from youtube_summarizer.youtube import (
     fetch_channel_title_from_rss,
@@ -55,7 +56,8 @@ from youtube_summarizer.youtube import (
 @dataclass(frozen=True)
 class TranscriptResult:
     text: str
-    source: str  # "youtube" | "macwhisper" (fallback can be whisper.cpp)
+    source: str
+
 
 @dataclass(frozen=True)
 class BetaStats:
@@ -68,11 +70,26 @@ class BetaStats:
     audio_download_ms: int | None
     audio_bytes: int | None
     transcribe_ms: int | None
-    summarize_ms: int | None  # total summarize time (all prompts)
+    summarize_ms: int | None
     email_render_ms: int | None
     email_send_ms: int | None
     total_ms: int
 
+
+# ---------------------------------------------------------------------------
+# Hashtag stripping
+# ---------------------------------------------------------------------------
+
+_HASHTAG_RE = re.compile(r"\s*#\w+")
+
+
+def _strip_hashtags(title: str) -> str:
+    return _HASHTAG_RE.sub("", title).strip()
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
 
 def run_once(limit: int = 10) -> int:
     _load_dotenv_if_present(repo_root() / ".env")
@@ -81,13 +98,11 @@ def run_once(limit: int = 10) -> int:
     settings = load_settings()
     channels = load_channels()
     process_prompts = load_process_prompts()
-    all_enabled_prompts = [p for p in process_prompts if p.enabled]
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
     log.info("run_once: %d source(s) configured, limit=%d, dry_run=%s, ollama=%s",
              len(channels), limit, settings.dry_run, settings.ollama_model or "off")
-    log.debug("Enabled summarize prompts: %s", [p.key for p in all_enabled_prompts])
 
     root = repo_root()
     _cleanup_downloads(root)
@@ -97,6 +112,9 @@ def run_once(limit: int = 10) -> int:
     )
     template = env.get_template("email.html.j2")
 
+    # Build prompt map by key for quick lookup
+    prompt_map = {p.key: p for p in process_prompts}
+
     processed = 0
     with db.connect(root) as conn:
         remaining = max(1, limit)
@@ -104,13 +122,8 @@ def run_once(limit: int = 10) -> int:
         for ch in channels:
             if remaining <= 0:
                 break
-            mode = ch.mode
-            mode_filter = os.environ.get("YTS_MODE_FILTER", "").strip().lower()
-            if mode_filter and mode != mode_filter:
-                log.debug("Skipping %s (mode filter: %s != %s)", ch.url, mode, mode_filter)
-                continue
 
-            log.debug("Checking source: [%s] %s (%s)", ch.source_type, ch.name or ch.url, mode)
+            log.debug("Checking source: [%s] %s", ch.source_type, ch.name or ch.url)
 
             rss = source_url_to_rss(ch.url)
             if not rss:
@@ -126,14 +139,12 @@ def run_once(limit: int = 10) -> int:
                     name=channel_title,
                 )
 
-            # During beta, scan deeper into the RSS feed so we reliably find an unseen video.
             t_rss = time.perf_counter()
             videos = fetch_latest_videos_from_rss(rss, limit=30)
             rss_fetch_ms = _ms_since(t_rss)
             log.debug("RSS fetch for '%s': %d video(s) in %dms", effective_channel_name, len(videos), rss_fetch_ms)
+
             if not videos:
-                # Some playlists don't reliably expose items via RSS (even when unlisted).
-                # Fallback to yt-dlp to enumerate playlist items (best-effort).
                 log.debug("RSS empty — falling back to yt-dlp playlist enumeration for %s", ch.url)
                 videos = _fetch_videos_via_ytdlp_playlist(
                     playlist_url=ch.url,
@@ -143,72 +154,46 @@ def run_once(limit: int = 10) -> int:
                 )
                 log.debug("yt-dlp fallback found %d video(s)", len(videos))
 
-            # Bootstrap: on first encounter of a subscription, mark all current RSS videos as seen
-            # without processing them. This prevents flooding on newly-added channels.
-            # Queue playlists are NOT bootstrapped — they are always drained to empty.
+            # Bootstrap: on first encounter of a subscription, mark all current RSS videos as seen.
             if ch.source_type == "subscription" and not has_bootstrapped(conn, ch.url):
                 for v in videos:
-                    seen_id = v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}"
-                    if not db.has_seen(conn, seen_id):
-                        db.mark_seen(
-                            conn,
-                            db.SeenVideo(
-                                video_id=seen_id,
-                                video_url=v.url,
-                                channel_name=effective_channel_name,
-                                video_title=v.title,
-                                published_at=v.published_at,
-                            ),
-                        )
+                    if not db.has_seen(conn, v.video_id):
+                        db.mark_seen(conn, db.SeenVideo(
+                            video_id=v.video_id,
+                            video_url=v.url,
+                            channel_name=effective_channel_name,
+                            video_title=_strip_hashtags(v.title),
+                            published_at=v.published_at,
+                        ))
                 mark_bootstrapped(conn, ch.url)
-                log.info("[bootstrap] %s: marked %d existing video(s) as seen — will only process new videos going forward",
+                log.info("[bootstrap] %s: marked %d existing video(s) as seen",
                          effective_channel_name, len(videos))
                 continue
 
-            # Determine which prompts to run for this channel.
-            # If ch.prompts is set, use those keys from ALL prompts (ignoring global enabled flag).
-            # Otherwise fall back to globally-enabled prompts.
-            if ch.prompts:
-                prompt_by_key = {p.key: p for p in process_prompts}
-                channel_prompts = [prompt_by_key[k] for k in ch.prompts if k in prompt_by_key]
-                if not channel_prompts:
-                    channel_prompts = all_enabled_prompts
-            else:
-                channel_prompts = all_enabled_prompts
-
-            log.debug("Prompts for '%s': %s", effective_channel_name, [p.key for p in channel_prompts])
-
-            # Source label for the email (human-readable type tag).
             source_label = {
                 "subscription": "Subscription",
                 "summarize_queue": "Summarize Queue",
                 "transcribe_queue": "Transcribe Queue",
             }.get(ch.source_type, ch.source_type)
 
-            unseen = [v for v in videos if not db.has_seen(conn, v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}")]
-            log.debug("'%s': %d/%d video(s) unseen", effective_channel_name, len(unseen), len(videos))
-
             for v in videos:
                 if remaining <= 0:
                     break
-                # Allow the same video to be processed separately for summarize vs transcribe queues.
-                seen_id = v.video_id if mode != "transcribe" else f"transcribe:{v.video_id}"
-                if db.has_seen(conn, seen_id):
+                if db.has_seen(conn, v.video_id):
                     log.debug("  skip (already seen): %s", v.title)
                     continue
 
-                # For queue sources, each video may come from a different channel.
-                # Use the per-video channel name from RSS if available; fall back to feed-level name.
+                # Per-video channel name: use RSS entry author for queue sources
                 if ch.source_type in ("summarize_queue", "transcribe_queue") and v.channel_name:
                     video_channel_name = v.channel_name
                 else:
                     video_channel_name = effective_channel_name
 
-                log.info("Processing [%s] '%s' — %s", ch.source_type, v.title, v.video_id)
+                clean_title = _strip_hashtags(v.title)
+                log.info("Processing [%s] '%s' — %s", ch.source_type, clean_title, v.video_id)
                 t_total = time.perf_counter()
                 summary_id = _new_summary_id(v.video_id)
-                # Dry-run means: don't email + don't mark as seen.
-                # We still fetch real transcripts/transcriptions so QA runs are meaningful.
+
                 log.debug("  fetching transcript via %s ...", settings.transcribe_backend)
                 try:
                     transcript, transcript_stats = _get_transcript(
@@ -223,84 +208,36 @@ def run_once(limit: int = 10) -> int:
                         prefer_youtube=False,
                     )
                 except RuntimeError as e:
-                    log.warning("  skipping '%s' — transcript unavailable: %s", v.title, e)
+                    log.warning("  skipping '%s' — transcript unavailable: %s", clean_title, e)
                     if not settings.dry_run:
                         db.mark_seen(conn, db.SeenVideo(
-                            video_id=seen_id,
+                            video_id=v.video_id,
                             video_url=v.url,
                             channel_name=video_channel_name,
-                            video_title=v.title,
+                            video_title=clean_title,
                             published_at=v.published_at,
                         ))
                     remaining -= 1
                     continue
-                log.debug("  transcript: source=%s chars=%d download=%s transcribe=%s",
-                          transcript.source, len(transcript.text or ""),
-                          _fmt_ms(transcript_stats.audio_download_ms),
-                          _fmt_ms(transcript_stats.transcribe_ms))
 
-                # Build email sections
+                log.debug("  transcript: source=%s chars=%d", transcript.source, len(transcript.text or ""))
+
+                tier = _summary_tier(len(transcript.text))
+                log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
+
+                # Build all email sections
                 t_sum_total = time.perf_counter()
-                sections: list[dict[str, object]] = []
-                per_prompt_s: list[str] = []
-                enabled_prompt_keys: list[str] = []
-                if mode == "transcribe":
-                    enabled_prompt_keys = ["transcribe_clean"]
-                    log.debug("  running transcribe cleanup...")
-                    t_clean = time.perf_counter()
-                    cleaned = _clean_transcript_for_reading(transcript.text, ollama_model=settings.ollama_model)
-                    per_prompt_s.append(f"transcribe_clean={_fmt_ms(_ms_since(t_clean))}")
-                    log.debug("  transcribe cleanup done in %s", _fmt_ms(_ms_since(t_clean)))
-                    sections.append(
-                        {
-                            "key": "transcribe_clean",
-                            "label": "Transcript (cleaned)",
-                            "text": cleaned,
-                            "html": _format_transcript_html(cleaned),
-                        }
-                    )
-                else:
-                    tier = _summary_tier(len(transcript.text))
-                    log.debug("Summary tier: %s (%d chars)", tier["tier"], len(transcript.text))
-                    enabled_prompt_keys = [p.key for p in channel_prompts]
-                    n_prompts = len(channel_prompts)
-                    log.info(
-                        "  Summarizing with %s — %d prompt(s), %s tier ...",
-                        settings.ollama_model or "no model",
-                        n_prompts,
-                        tier["tier"],
-                    )
-                    for i, p in enumerate(channel_prompts, 1):
-                        log.info("  [%d/%d] %s ...", i, n_prompts, p.key)
-                        log.debug("  running prompt '%s' via ollama=%s ...", p.key, settings.ollama_model or "off")
-                        t_sum = time.perf_counter()
-                        tmpl = p.for_tier(tier["tier"])
-                        out = _summarize(transcript.text, settings.ollama_model, tmpl)
-                        if p.key == "default":
-                            out = _ensure_key_takeaways(out, transcript.text, settings.ollama_model, min_bullets=int(tier["bullet_count"]))
-                        elapsed = _ms_since(t_sum)
-                        per_prompt_s.append(f"{p.key}={_fmt_ms(elapsed)}")
-                        log.info("  [%d/%d] %s done in %s", i, n_prompts, p.key, _fmt_ms(elapsed))
-                        log.debug("  prompt '%s' done in %s (%d chars out)", p.key, _fmt_ms(elapsed), len(out))
-                        sections.append(
-                            {
-                                "key": p.key,
-                                "label": p.label,
-                                "text": out,
-                                "html": _format_summary_html(out),
-                            }
-                        )
+                sections, per_prompt_s, enabled_prompt_keys = _build_email_sections(
+                    transcript=transcript.text,
+                    ollama_model=settings.ollama_model,
+                    tier=tier,
+                    root=root,
+                    prompt_map=prompt_map,
+                )
                 summarize_ms = _ms_since(t_sum_total)
 
-                # summarize_queue: just the video title (no tag, no playlist name)
-                # subscription: [SUB] Channel — Title
-                # transcribe_queue: [TRANSCRIPTION] Title
-                if ch.source_type == "summarize_queue":
-                    subject = f"{settings.subject_prefix}{v.title}"
-                elif ch.source_type == "transcribe_queue":
-                    subject = f"{settings.subject_prefix}[TRANSCRIPTION] {v.title}"
-                else:
-                    subject = f"{settings.subject_prefix}[SUB] {video_channel_name} — {v.title}"
+                subject = f"[S] {clean_title}"
+
                 beta_stats = BetaStats(
                     video_id=v.video_id,
                     summary_id=summary_id,
@@ -314,7 +251,7 @@ def run_once(limit: int = 10) -> int:
                     summarize_ms=summarize_ms,
                     email_render_ms=None,
                     email_send_ms=None,
-                    total_ms=0,  # set below
+                    total_ms=0,
                 )
                 beta_stats_view = {
                     "video_id": beta_stats.video_id,
@@ -322,12 +259,12 @@ def run_once(limit: int = 10) -> int:
                     "transcript_source": beta_stats.transcript_source,
                     "ollama_model": beta_stats.ollama_model,
                     "enabled_prompts": ", ".join(beta_stats.enabled_prompts),
-                    "prompt_tier": tier["tier"] if mode != "transcribe" else "n/a",
+                    "prompt_tier": tier["tier"],
                     "prompt_count": len(beta_stats.enabled_prompts),
                     "per_prompt_summarize_s": ", ".join(per_prompt_s),
                     "transcript_chars": len(transcript.text or ""),
                     "summary_chars": sum(len(str(s.get("text", "")) or "") for s in sections),
-                    "mode": mode,
+                    "mode": "summarize",
                     "rss_fetch_s": _fmt_seconds(beta_stats.rss_fetch_ms),
                     "media_size_mb": _fmt_mb(beta_stats.audio_bytes),
                     "download_media_s": _fmt_seconds(beta_stats.audio_download_ms),
@@ -335,27 +272,25 @@ def run_once(limit: int = 10) -> int:
                     "summarize_s": _fmt_seconds(beta_stats.summarize_ms),
                     "email_render_s": None,
                     "email_send_s": None,
-                    # End-to-end is computed as (total_before_send_s + email_send_s).
-                    # We include both so you can see the breakdown.
                     "total_before_send_s": None,
                     "total_to_send_s": None,
-                    "qa_notes": "multi-prompt email enabled (beta)",
+                    "qa_notes": "",
                 }
+
                 published_at_display = _fmt_published_at(v.published_at)
                 render_ctx = dict(
                     subject=subject,
                     source_label=source_label,
                     source_name=video_channel_name,
-                    video_title=v.title,
+                    video_title=clean_title,
                     video_url=v.url,
                     thumbnail_url=f"https://img.youtube.com/vi/{v.video_id}/maxresdefault.jpg",
                     sections=sections,
-                    transcript_source=transcript.source,
                     published_at=v.published_at,
                     published_at_display=published_at_display,
                     beta_stats=beta_stats_view,
                 )
-                # Render twice so the email itself can include accurate `email_render_s`.
+
                 t_render = time.perf_counter()
                 html = template.render(**render_ctx)
                 email_render_ms = _ms_since(t_render)
@@ -366,27 +301,26 @@ def run_once(limit: int = 10) -> int:
                 beta_stats_view["email_render_s"] = _fmt_seconds(beta_stats.email_render_ms)
                 beta_stats_view["total_before_send_s"] = _fmt_seconds(beta_stats.total_ms)
                 render_ctx["beta_stats"] = beta_stats_view
-                # Re-render with updated stats (small overhead, but removes "n/a" during beta).
                 html = template.render(**render_ctx)
-                # Persist the summary + stats after we know render/total timings.
+
                 _write_summary_artifact(
                     root=root,
                     summary_id=summary_id,
                     channel_name=video_channel_name,
-                    video_title=v.title,
+                    video_title=clean_title,
                     video_url=v.url,
                     video_id=v.video_id,
                     published_at=v.published_at,
                     transcript_source=transcript.source,
-                    enabled_prompts=[p.key for p in channel_prompts],
+                    enabled_prompts=enabled_prompt_keys,
                     ollama_model=settings.ollama_model,
                     sections=sections,
                     beta_stats=beta_stats,
                 )
+
                 text = (
-                    f"{video_channel_name}\n{v.title}\n{v.url}\n\n"
+                    f"{video_channel_name}\n{clean_title}\n{v.url}\n\n"
                     f"{_format_sections_text(sections)}\n\n"
-                    f"Transcript source: {transcript.source}\n\n"
                     f"{_format_beta_stats_text(beta_stats)}\n"
                 )
 
@@ -407,27 +341,22 @@ def run_once(limit: int = 10) -> int:
                         total_to_send_s = round(beta_stats_view["total_before_send_s"] + beta_stats_view["email_send_s"], 2)
                     beta_stats_view["total_to_send_s"] = total_to_send_s
                     beta_stats_view["total_processing_s"] = total_to_send_s
-                    # Persist final stats (including send timing) to the stored summary file.
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
                 else:
-                    # Even in dry-run, append the final timings we do have for QA.
-                    log.info("  dry-run: email suppressed for '%s'", v.title)
+                    log.info("  dry-run: email suppressed for '%s'", clean_title)
                     beta_stats_view["qa_notes"] = "dry-run (no email sent)"
                     beta_stats_view["total_processing_s"] = beta_stats_view.get("total_before_send_s")
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
 
                 if not settings.dry_run:
-                    log.debug("  marking seen: %s", seen_id)
-                    db.mark_seen(
-                        conn,
-                        db.SeenVideo(
-                            video_id=seen_id,
-                            video_url=v.url,
-                            channel_name=video_channel_name,
-                            video_title=v.title,
-                            published_at=v.published_at,
-                        ),
-                    )
+                    log.debug("  marking seen: %s", v.video_id)
+                    db.mark_seen(conn, db.SeenVideo(
+                        video_id=v.video_id,
+                        video_url=v.url,
+                        channel_name=video_channel_name,
+                        video_title=clean_title,
+                        published_at=v.published_at,
+                    ))
                 remaining -= 1
                 processed += 1
                 log.info("  done: total=%s remaining_slots=%d", _fmt_ms(_ms_since(t_total)), remaining)
@@ -437,11 +366,6 @@ def run_once(limit: int = 10) -> int:
 
 
 def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
-    """
-    Poll continuously:
-    - Process anything new from configured sources (channels + playlists)
-    - If nothing new is found, sleep until the next poll
-    """
     _load_dotenv_if_present(repo_root() / ".env")
     setup_logging()
     log.info("Starting watch loop (poll_seconds=%d, limit=%d)", poll_seconds, limit)
@@ -451,38 +375,219 @@ def run_forever(*, poll_seconds: int = 900, limit: int = 10) -> None:
             log.debug("No new videos found — sleeping %ds", poll_seconds)
             time.sleep(max(5, int(poll_seconds)))
         else:
-            # If we processed something, loop again immediately to catch up quickly.
             continue
 
 
-def _summary_tier(transcript_chars: int) -> dict:
-    """
-    Returns the length tier and expected bullet count based on transcript length.
+# ---------------------------------------------------------------------------
+# Section builder
+# ---------------------------------------------------------------------------
 
-    Thresholds (approx 900 chars/min of speech):
-      short  < 8,000 chars  →  ~< 9 min
-      medium 8,000–22,000   →  ~9–25 min
-      long   > 22,000       →  ~25+ min
+def _build_email_sections(
+    *,
+    transcript: str,
+    ollama_model: str | None,
+    tier: dict,
+    root: Path,
+    prompt_map: dict,
+) -> tuple[list[dict], list[str], list[str]]:
     """
-    if transcript_chars < 8_000:
-        return {"tier": "short", "bullet_count": "3"}
-    if transcript_chars < 22_000:
-        return {"tier": "medium", "bullet_count": "5"}
-    return {"tier": "long", "bullet_count": "8"}
+    Builds all 5 email sections in fixed order:
+    1. opener, 2. summary, 3. glossary, 4. outline, 5. transcript
+    Returns (sections, per_prompt_s, enabled_keys).
+    """
+    sections: list[dict] = []
+    per_prompt_s: list[str] = []
+    enabled_keys: list[str] = []
 
+    # 1. Opener
+    if "opener" in prompt_map:
+        p = prompt_map["opener"]
+        log.info("  [1/5] opener ...")
+        t0 = time.perf_counter()
+        tmpl = p.for_tier(tier["tier"])
+        out = _run_llm(transcript, ollama_model, tmpl)
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"opener={_fmt_ms(elapsed)}")
+        enabled_keys.append("opener")
+        log.info("  [1/5] opener done in %s", _fmt_ms(elapsed))
+        sections.append({
+            "key": "opener",
+            "label": None,
+            "style": "opener",
+            "text": out,
+            "html": _format_opener_html(out),
+        })
+
+    # 2. Summary
+    if "summary" in prompt_map:
+        p = prompt_map["summary"]
+        log.info("  [2/5] summary (%s tier) ...", tier["tier"])
+        t0 = time.perf_counter()
+        tmpl = p.for_tier(tier["tier"])
+        out = _summarize(transcript, ollama_model, tmpl)
+        out = _ensure_key_takeaways(out, transcript, ollama_model, min_bullets=int(tier["bullet_count"]))
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"summary={_fmt_ms(elapsed)}")
+        enabled_keys.append("summary")
+        log.info("  [2/5] summary done in %s", _fmt_ms(elapsed))
+        sections.append({
+            "key": "summary",
+            "label": "Summary",
+            "style": "body",
+            "text": out,
+            "html": _format_summary_html(out),
+        })
+
+    # 3. Glossary
+    if "glossary" in prompt_map:
+        p = prompt_map["glossary"]
+        log.info("  [3/5] glossary ...")
+        t0 = time.perf_counter()
+        tmpl = p.for_tier(tier["tier"])
+        glossary_out, new_terms = _run_glossary(transcript, ollama_model, tmpl, root)
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"glossary={_fmt_ms(elapsed)}")
+        enabled_keys.append("glossary")
+        log.info("  [3/5] glossary done in %s (%d new terms)", _fmt_ms(elapsed), len(new_terms))
+        sections.append({
+            "key": "glossary",
+            "label": "Glossary",
+            "style": "body",
+            "text": glossary_out,
+            "html": _format_glossary_html(glossary_out),
+        })
+
+    # 4. Outline
+    if "outline" in prompt_map:
+        p = prompt_map["outline"]
+        log.info("  [4/5] outline ...")
+        t0 = time.perf_counter()
+        tmpl = p.for_tier(tier["tier"])
+        out = _run_llm(transcript, ollama_model, tmpl)
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"outline={_fmt_ms(elapsed)}")
+        enabled_keys.append("outline")
+        log.info("  [4/5] outline done in %s", _fmt_ms(elapsed))
+        sections.append({
+            "key": "outline",
+            "label": "Outline",
+            "style": "body",
+            "text": out,
+            "html": _format_outline_html(out),
+        })
+
+    # 5. Transcript (always runs — full text, LLM cleanup)
+    log.info("  [5/5] transcript cleanup ...")
+    t0 = time.perf_counter()
+    cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model)
+    elapsed = _ms_since(t0)
+    per_prompt_s.append(f"transcript={_fmt_ms(elapsed)}")
+    enabled_keys.append("transcript")
+    log.info("  [5/5] transcript done in %s", _fmt_ms(elapsed))
+    sections.append({
+        "key": "transcript",
+        "label": "Transcript",
+        "style": "transcript",
+        "text": cleaned,
+        "html": _format_transcript_html(cleaned),
+    })
+
+    return sections, per_prompt_s, enabled_keys
+
+
+# ---------------------------------------------------------------------------
+# LLM helpers
+# ---------------------------------------------------------------------------
+
+def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
+    """Run a prompt through Ollama with compacted transcript. Falls back to first 500 chars."""
+    if ollama_model:
+        try:
+            return summarize_with_ollama(
+                transcript=transcript,
+                model=ollama_model,
+                prompt_template=prompt_template,
+                compact=True,
+            )
+        except Exception as e:
+            log.warning("LLM call failed (%s) — using fallback", e)
+    return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
 
 
 def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
     if ollama_model:
         try:
-            out = summarize_with_ollama(transcript=transcript, model=ollama_model, prompt_template=prompt_template)
+            out = summarize_with_ollama(
+                transcript=transcript,
+                model=ollama_model,
+                prompt_template=prompt_template,
+                compact=True,
+            )
             if out:
                 return out
         except Exception as e:
-            # If Ollama is temporarily unavailable, we still send *something*.
             log.warning("Ollama summarization failed (%s) — using fallback", e)
-            pass
     return summarize_fallback(transcript)
+
+
+def _run_glossary(
+    transcript: str,
+    ollama_model: str | None,
+    prompt_template: str,
+    root: Path,
+) -> tuple[str, list[str]]:
+    """Run the glossary prompt with skip-term injection. Returns (output_text, new_term_names)."""
+    skip = get_skip_terms(root)
+    known_terms_str = ", ".join(skip) if skip else "none"
+
+    if not ollama_model:
+        return "No new terms identified.", []
+
+    try:
+        out = summarize_with_ollama(
+            transcript=transcript,
+            model=ollama_model,
+            prompt_template=prompt_template,
+            compact=True,
+            known_terms=known_terms_str,
+        )
+    except Exception as e:
+        log.warning("Glossary LLM call failed (%s)", e)
+        return "No new terms identified.", []
+
+    if not out or "no new terms" in out.lower():
+        return out or "No new terms identified.", []
+
+    new_terms = _parse_glossary_terms(out)
+    if new_terms:
+        try:
+            save_new_terms(root, new_terms)
+        except Exception as e:
+            log.warning("Failed to save glossary terms: %s", e)
+
+    return out, new_terms
+
+
+def _parse_glossary_terms(text: str) -> list[str]:
+    """Extract term names from **Term** formatted glossary output."""
+    return re.findall(r"^\*\*(.+?)\*\*", text, re.MULTILINE)
+
+
+# ---------------------------------------------------------------------------
+# Tier
+# ---------------------------------------------------------------------------
+
+def _summary_tier(transcript_chars: int) -> dict:
+    if transcript_chars < 8_000:
+        return {"tier": "short", "bullet_count": "3"}
+    if transcript_chars < 22_000:
+        return {"tier": "medium", "bullet_count": "5"}
+    return {"tier": "long", "bullet_count": "7"}
+
+
+# ---------------------------------------------------------------------------
+# Transcript cleanup
+# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class _TranscriptStats:
@@ -520,7 +625,6 @@ def _get_transcript(
     audio_dir.mkdir(parents=True, exist_ok=True)
     out_base = audio_dir / f"{video_id}"
 
-    # Download audio
     cookies_args: list[str] = []
     if ytdlp_cookies_file:
         cookies_args = ["--cookies", ytdlp_cookies_file]
@@ -528,28 +632,16 @@ def _get_transcript(
         cookies_args = ["--cookies-from-browser", ytdlp_cookies_from_browser]
 
     t_dl = time.perf_counter()
-    _run(
-        [
-            "yt-dlp",
-            # We only need audio (not video). Prefer a smaller audio stream to reduce
-            # download time + disk usage during beta testing.
-            #
-            # - `bestaudio[abr<=96]` tries to pick an audio-only format at ~96kbps or lower.
-            # - Falls back to `bestaudio` if that constraint isn't available.
-            "-f",
-            "bestaudio[abr<=96]/bestaudio",
-            "--extract-audio",
-            "--audio-format",
-            "m4a",
-            # When re-encoding is needed, don't aim for "best"; smaller is fine for ASR.
-            "--audio-quality",
-            "5",
-            *cookies_args,
-            "-o",
-            str(out_base) + ".%(ext)s",
-            video_url,
-        ]
-    )
+    _run([
+        "yt-dlp",
+        "-f", "bestaudio[abr<=96]/bestaudio",
+        "--extract-audio",
+        "--audio-format", "m4a",
+        "--audio-quality", "5",
+        *cookies_args,
+        "-o", str(out_base) + ".%(ext)s",
+        video_url,
+    ])
     audio_download_ms = _ms_since(t_dl)
 
     audio_path = str(out_base) + ".m4a"
@@ -558,78 +650,57 @@ def _get_transcript(
     audio_bytes = Path(audio_path).stat().st_size
 
     transcript_text = ""
-    source = "macwhisper"
+    source = "parakeet"
     transcribe_ms: int | None = None
 
     if backend == "parakeet_mlx":
-        # Convert to 16kHz mono WAV — the native format Parakeet expects.
-        # Feeding m4a directly forces internal decode+resample on every run,
-        # which is the main cause of slow transcription times.
         wav_path = str(out_base) + "_16k.wav"
-        _run(
-            [
-                "ffmpeg", "-y",
-                "-i", audio_path,
-                "-ar", "16000",
-                "-ac", "1",
-                "-c:a", "pcm_s16le",
-                wav_path,
-            ]
-        )
+        _run([
+            "ffmpeg", "-y",
+            "-i", audio_path,
+            "-ar", "16000",
+            "-ac", "1",
+            "-c:a", "pcm_s16le",
+            wav_path,
+        ])
 
-        # `parakeet-mlx` writes outputs to files; we read the .txt output.
         out_dir = audio_dir / "parakeet"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path_no_ext = out_dir / f"{video_id}"
         t_tx = time.perf_counter()
-        _run(
-            [
-                "parakeet-mlx",
-                wav_path,
-                "--model",
-                parakeet_model,
-                "--output-dir",
-                str(out_dir),
-                "--output-format",
-                "txt",
-                "--output-template",
-                str(out_path_no_ext.name),
-            ]
-        )
+        _run([
+            "parakeet-mlx",
+            wav_path,
+            "--model", parakeet_model,
+            "--output-dir", str(out_dir),
+            "--output-format", "txt",
+            "--output-template", str(out_path_no_ext.name),
+        ])
         transcribe_ms = _ms_since(t_tx)
         txt_path = out_dir / f"{out_path_no_ext.name}.txt"
         transcript_text = txt_path.read_text(encoding="utf-8").strip() if txt_path.exists() else ""
 
-        # Remove the temporary wav — the source m4a is kept for re-runs.
         try:
             Path(wav_path).unlink()
         except OSError:
             pass
 
-        source = "parakeet"
-
     if backend == "whisper_cpp":
         if not whisper_cpp_model:
             raise RuntimeError(
                 "No YouTube transcript found, and whisper.cpp fallback is selected but missing a model path. "
-                "Set YTS_WHISPER_CPP_MODEL in .env to a ggml model file (e.g., ggml-base.en.bin)."
+                "Set YTS_WHISPER_CPP_MODEL in .env."
             )
         t_tx = time.perf_counter()
-        transcript_text = _run_capture(
-            [
-                "whisper-cli",
-                "-m",
-                whisper_cpp_model,
-                "-nt",
-                "-np",
-                audio_path,
-            ]
-        ).strip()
+        transcript_text = _run_capture([
+            "whisper-cli", "-m", whisper_cpp_model, "-nt", "-np", audio_path,
+        ]).strip()
         transcribe_ms = _ms_since(t_tx)
         source = "whisper_cpp"
 
     if not transcript_text:
         raise RuntimeError("Transcription fallback returned empty transcript.")
+
     return (
         TranscriptResult(text=transcript_text, source=source),
         _TranscriptStats(
@@ -641,312 +712,131 @@ def _get_transcript(
     )
 
 
-def _run(cmd: list[str]) -> None:
-    try:
-        subprocess.run(cmd, check=True, env=_child_env())
-    except subprocess.CalledProcessError as e:
-        if cmd and cmd[0] == "yt-dlp":
-            msg = (getattr(e, "stderr", None) or "") if hasattr(e, "stderr") else ""
-            # If ffprobe/ffmpeg is missing, yt-dlp extraction can fail even when cookies are fine.
-            if "ffprobe" in msg.lower() or "ffmpeg" in msg.lower():
-                raise RuntimeError(
-                    "Audio processing failed because ffmpeg/ffprobe was not found. "
-                    "Fix: install ffmpeg (brew install ffmpeg) and ensure Homebrew is on PATH."
-                ) from e
-            raise RuntimeError(
-                "Audio download failed. YouTube may be blocking automated downloads on this network. "
-                "Fix: set YTS_YTDLP_COOKIES_FROM_BROWSER (e.g. 'chrome' or 'safari') "
-                "or YTS_YTDLP_COOKIES_FILE to a cookies.txt export, then retry."
-            ) from e
-        raise
-
-
-def _run_capture(cmd: list[str]) -> str:
-    res = subprocess.run(
-        cmd,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=_child_env(),
-    )
-    return res.stdout or ""
-
-
-def _child_env() -> dict[str, str]:
+def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) -> str:
     """
-    Ensure subprocesses can find tools installed in the active venv (e.g. `parakeet-mlx`).
+    Cleans transcript for the email transcript section.
+    Step 1: deterministic pre-pass (filler removal, paragraph breaks, etc.)
+    Step 2: LLM cleanup (sentence boundaries, capitalization, false starts, topic headers)
+    Uses the FULL transcript — no compaction.
     """
-    env = dict(os.environ)
-    # Don't `.resolve()` here: venv python is often a symlink to the base interpreter,
-    # and resolving would point us at the Homebrew python bin instead of `.venv/bin`.
-    venv_bin = str(Path(sys.executable).parent)
-    base_path = env.get("PATH", "")
-    # launchd often provides a minimal PATH; add common Homebrew locations so tools like
-    # `yt-dlp`, `ffmpeg`, and `ffprobe` are discoverable.
-    brew_prefixes = ["/opt/homebrew/bin", "/opt/homebrew/sbin"]
-    for p in reversed(brew_prefixes):
-        if p and p not in base_path:
-            base_path = f"{p}{os.pathsep}{base_path}" if base_path else p
-    env["PATH"] = f"{venv_bin}{os.pathsep}{base_path}"
-    return env
+    t = (transcript or "").strip()
+    if not t:
+        return t
 
+    # Step 1: Deterministic pre-pass
+    opts = load_transcribe_options()
 
-def _fmt_published_at(published_at: str) -> str:
-    """Parse and format a video's published date for display in emails (Eastern time)."""
-    if not published_at:
-        return ""
-    from zoneinfo import ZoneInfo
-    eastern = ZoneInfo("America/New_York")
-    # Try RFC 2822 (feedparser default: "Thu, 13 Mar 2025 14:30:00 +0000")
-    try:
-        dt = parsedate_to_datetime(published_at).astimezone(eastern)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
-    except Exception:
-        pass
-    # Try ISO 8601
-    try:
-        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(eastern)
-        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
-    except Exception:
-        pass
-    return published_at
+    if opts.get("strip_stage_directions", False):
+        t = re.sub(
+            r"\[(?:music|applause|laughter|silence|noise|intro|outro|advertisement)[^\]]*\]",
+            "", t, flags=re.I,
+        )
+        t = re.sub(r"\s{2,}", " ", t).strip()
 
+    if opts.get("remove_fillers", True):
+        t = re.sub(r"(?i)\b(um+|uh+|er+|ah+|eh+|hmm+)\b", "", t)
+        t = re.sub(r"(?i)\b(kind of|sort of|you know|i mean)\b", "", t)
+        t = re.sub(r"(?i)\b(\w+)(\s+\1\b)+", r"\1", t)
+        t = re.sub(r",\s*,+", ",", t)
+        t = re.sub(r"(?<=[.!?])\s*,\s*", " ", t)
+        t = re.sub(r"^\s*,\s*", "", t)
+        t = re.sub(r"(?<=[.!?])\s+([a-z])", lambda m: " " + m.group(1).upper(), t)
+        t = re.sub(r"\s{2,}", " ", t).strip()
 
-def _ms_since(t0: float) -> int:
-    return int(round((time.perf_counter() - t0) * 1000))
+    if opts.get("split_long_clauses", False):
+        def _maybe_split_clause(m: re.Match) -> str:
+            before_start = m.string.rfind(". ", 0, m.start())
+            before_start = before_start + 2 if before_start >= 0 else 0
+            clause_before = m.string[before_start: m.start()]
+            clause_after = m.string[m.end():]
+            next_end = clause_after.find(". ")
+            clause_after_preview = clause_after if next_end < 0 else clause_after[:next_end]
+            if len(clause_before.strip()) >= 60 and len(clause_after_preview.strip()) >= 40:
+                return f". {m.group(1).capitalize()} "
+            return m.group(0)
+        t = re.sub(r",\s+(and|but)\s+", _maybe_split_clause, t)
+        t = re.sub(r"\s{2,}", " ", t).strip()
 
-
-def _fmt_ms(ms: int | None) -> str:
-    if ms is None:
-        return "n/a"
-    return f"{ms / 1000:.2f} s"
-
-
-def _fmt_seconds(ms: int | None) -> float | None:
-    if ms is None:
-        return None
-    return round(ms / 1000.0, 2)
-
-
-def _fmt_bytes(n: int | None) -> str:
-    if n is None:
-        return "n/a"
-    return f"{(n / (1024.0 * 1024.0)):.2f} MB"
-
-
-def _fmt_mb(n: int | None) -> float | None:
-    if n is None:
-        return None
-    return round(n / (1024.0 * 1024.0), 2)
-
-
-def _format_beta_stats_text(s: BetaStats) -> str:
-    lines = [
-        "---",
-        "Beta stats",
-        f"- summary_id: {s.summary_id}",
-        f"- video_id: {s.video_id}",
-        f"- transcript_source: {s.transcript_source}",
-        f"- enabled_prompts: {', '.join(s.enabled_prompts)}",
-        f"- ollama_model: {s.ollama_model or 'n/a'}",
-        f"- rss_fetch_s: {_fmt_ms(s.rss_fetch_ms)}",
-        f"- media_size_mb: {_fmt_bytes(s.audio_bytes)}",
-        f"- download_media_s: {_fmt_ms(s.audio_download_ms)}",
-        f"- transcribe_s: {_fmt_ms(s.transcribe_ms)}",
-        f"- summarize_s: {_fmt_ms(s.summarize_ms)}",
-        f"- email_render_s: {_fmt_ms(s.email_render_ms)}",
-        f"- email_send_s: {_fmt_ms(s.email_send_ms)}",
-        f"- total_before_send_s: {_fmt_ms(s.total_ms)}",
-        "- total_to_send_s: total_before_send_s + email_send_s",
-        "---",
-    ]
-    return "\n".join(lines)
-
-
-def _format_sections_text(sections: list[dict[str, object]]) -> str:
-    parts: list[str] = []
-    for i, s in enumerate(sections):
-        label = str(s.get("label", "") or "").strip() or str(s.get("key", "") or "").strip() or "Summary"
-        text = str(s.get("text", "") or "").strip()
-        if i > 0:
-            parts.append("\n---\n")
-        parts.append(f"{label}\n{text}".strip())
-    return "\n\n".join([p for p in parts if p.strip()]).strip()
-
-
-def _new_summary_id(video_id: str) -> str:
-    # Short, readable, and unique enough for beta (also safe to paste in chats).
-    return f"{video_id}_{uuid4().hex[:8]}"
-
-
-def _summaries_dir(root: Path) -> Path:
-    p = root / "data" / "summaries"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def _write_summary_artifact(
-    *,
-    root: Path,
-    summary_id: str,
-    channel_name: str,
-    video_title: str,
-    video_url: str,
-    video_id: str,
-    published_at: str,
-    transcript_source: str,
-    enabled_prompts: list[str],
-    ollama_model: str | None,
-    sections: list[dict[str, object]],
-    beta_stats: BetaStats,
-) -> None:
-    """
-    Store the exact summary text locally so we can reference it during beta.
-    """
-    path = _summaries_dir(root) / f"{summary_id}.txt"
-    beta_lines = _format_beta_stats_text(beta_stats)
-    body = "\n".join(
-        [
-            f"summary_id: {summary_id}",
-            f"video_id: {video_id}",
-            f"channel: {channel_name}",
-            f"title: {video_title}",
-            f"url: {video_url}",
-            f"published_at: {published_at}",
-            f"transcript_source: {transcript_source}",
-            f"enabled_prompts: {', '.join(enabled_prompts)}",
-            f"ollama_model: {ollama_model or 'n/a'}",
-            "",
-            "SUMMARY",
-            _format_sections_text(sections),
-            "",
-            beta_lines.strip(),
-            "",
-        ]
-    )
-    path.write_text(body, encoding="utf-8")
-
-
-def _append_summary_stats(*, root: Path, summary_id: str, beta_stats_view: dict) -> None:
-    """
-    After we have send timing, append a compact block (best-effort).
-    """
-    path = _summaries_dir(root) / f"{summary_id}.txt"
-    if not path.exists():
-        return
-    try:
-        lines = [
-            "",
-            "FINAL_STATS",
-            f"email_render_s: {beta_stats_view.get('email_render_s', 'n/a')}",
-            f"email_send_s: {beta_stats_view.get('email_send_s', 'n/a')}",
-            f"total_before_send_s: {beta_stats_view.get('total_before_send_s', 'n/a')}",
-            f"total_to_send_s: {beta_stats_view.get('total_to_send_s', 'n/a')}",
-            "",
-        ]
-        with path.open("a", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-    except Exception:
-        return
-
-
-def _best_effort_update_channel_name_in_config(*, config_path: Path, url: str, name: str) -> None:
-    """
-    If a channel entry is missing `name`, write it back into `config/channels.toml`.
-    This is best-effort and intentionally simple (string-based) to avoid adding deps.
-    """
-    try:
-        raw = config_path.read_text(encoding="utf-8")
-    except Exception:
-        return
-
-    # Only patch entries that already contain the URL and do NOT already have a name.
-    # Example accepted shapes:
-    # - { url = "...", prompt = "default" }
-    # - { url = "..." }
-    u = url.replace("\\", "\\\\").replace('"', '\\"')
-    n = name.replace("\\", "\\\\").replace('"', '\\"')
-
-    def repl(match: re.Match) -> str:
-        block = match.group(0)
-        if "name" in block:
-            return block
-        # Insert `name = "..."` right after `{`
-        return block.replace("{", '{ name = "' + n + '", ', 1)
-
-    # Find object literals that contain this url.
-    pattern = re.compile(r"\{[^}]*\burl\s*=\s*\"" + re.escape(u) + r"\"[^}]*\}")
-    updated, n_subs = pattern.subn(repl, raw, count=1)
-    if n_subs <= 0 or updated == raw:
-        return
-    try:
-        config_path.write_text(updated, encoding="utf-8")
-    except Exception:
-        return
-    try:
-        lines = [
-            "",
-            "FINAL_STATS",
-            f"email_render_s: {beta_stats_view.get('email_render_s', 'n/a')}",
-            f"email_send_s: {beta_stats_view.get('email_send_s', 'n/a')}",
-            f"total_before_send_s: {beta_stats_view.get('total_before_send_s', 'n/a')}",
-            f"total_to_send_s: {beta_stats_view.get('total_to_send_s', 'n/a')}",
-            "",
-        ]
-        with path.open("a", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-    except Exception:
-        return
-
-
-def _cleanup_downloads(root: Path) -> None:
-    """
-    Keep the data folder from growing forever.
-
-    Deletes old files in:
-    - data/audio/
-    - data/audio/parakeet/
-
-    Config:
-    - YTS_AUDIO_RETENTION_DAYS (default: 7)
-    """
-    keep_days_raw = os.environ.get("YTS_AUDIO_RETENTION_DAYS", "").strip()
-    try:
-        keep_days = int(keep_days_raw) if keep_days_raw else 7
-    except Exception:
-        keep_days = 7
-
-    if keep_days < 0:
-        return
-
-    cutoff = time.time() - (keep_days * 24 * 60 * 60)
-    dirs = [
-        root / "data" / "audio",
-        root / "data" / "audio" / "parakeet",
-    ]
-    for d in dirs:
-        if not d.exists() or not d.is_dir():
-            continue
-        for p in d.iterdir():
-            if not p.is_file():
+    # Basic paragraph reflow
+    if len(t) > 1200:
+        target = 1000 if opts.get("robust_sentence_breaks", False) else 1400
+        paras: list[str] = []
+        buf = ""
+        for part in re.split(r"(?<=[.!?])\s+", t):
+            if not part:
                 continue
-            try:
-                if p.stat().st_mtime < cutoff:
-                    p.unlink(missing_ok=True)
-            except Exception:
-                # Best-effort cleanup; never break the main run.
-                continue
+            if buf and len(buf) + 1 + len(part) > target:
+                paras.append(buf.strip())
+                buf = part
+            else:
+                buf = (buf + " " + part).strip()
+        if buf.strip():
+            paras.append(buf.strip())
+        t = "\n\n".join(paras).strip()
+
+    if opts.get("questions_own_paragraph", False):
+        t = re.sub(r"(?m)(^.*\?\s*$)", r"\n\1\n", t)
+        t = re.sub(r"\n{3,}", "\n\n", t).strip()
+
+    if opts.get("qa_paragraph_breaks", False):
+        t = re.sub(
+            r"(?i)(?<!\n\n)(?<!\n)(\b(?:first|second|third|fourth|fifth|next|last|final|closing)\s+question\b)",
+            r"\n\n\1", t,
+        )
+        t = re.sub(
+            r"(?i)(?<!\n\n)(?<!\n)(\b[A-Z][a-z]+(?:\s+[A-Z][\w.]*)?\s+(?:writes?|asks?),)",
+            r"\n\n\1", t,
+        )
+        t = re.sub(r"\n{3,}", "\n\n", t).strip()
+
+    # Step 2: LLM cleanup — always runs, full transcript (no compaction)
+    if ollama_model:
+        transcribe_prompts = [p for p in load_transcribe_prompts() if p.enabled]
+        if transcribe_prompts:
+            prompt_template = transcribe_prompts[0].template.strip()
+            if prompt_template:
+                prompt = prompt_template.format(transcript=t)
+                try:
+                    res = subprocess.run(
+                        ["ollama", "run", ollama_model],
+                        input=prompt,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        check=True,
+                        timeout=600,
+                        env=_child_env(),
+                    )
+                    out = (res.stdout or "").strip()
+                    if out:
+                        return out
+                except Exception as e:
+                    log.warning("Transcript LLM cleanup failed (%s) — using deterministic output", e)
+
+    return t
+
+
+# ---------------------------------------------------------------------------
+# HTML formatters
+# ---------------------------------------------------------------------------
+
+def _apply_inline(text: str) -> str:
+    """HTML-escape then apply **bold** markers."""
+    escaped = str(escape(text))
+    return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
+
+
+def _format_opener_html(text: str) -> Markup:
+    s = (text or "").strip()
+    if not s:
+        return Markup("")
+    return Markup(escape(s))
 
 
 def _format_summary_html(summary: str) -> Markup:
     """
-    Convert a lightweight markdown-ish summary into nice HTML.
-
-    Supported:
-    - Blank-line separated paragraphs
-    - Bullets starting with "- " or "* "
-    - "Key Takeaways" line becomes a small section header
+    Convert summary text into HTML.
+    Handles paragraphs, bullets, Key takeaways header, walk-away.
     """
     s = (summary or "").strip()
     if not s:
@@ -954,30 +844,15 @@ def _format_summary_html(summary: str) -> Markup:
 
     lines = [ln.rstrip() for ln in s.splitlines()]
     html_parts: list[str] = []
-
-    def close_list() -> None:
-        if html_parts and html_parts[-1] == "<ul>":
-            # empty list guard
-            html_parts.pop()
-            return
-        if any(p == "<ul>" for p in html_parts) and (not html_parts or html_parts[-1] != "</ul>"):
-            html_parts.append("</ul>")
-
     in_list = False
     para_buf: list[str] = []
-
-    def _apply_inline(text: str) -> str:
-        """Apply **bold** markers after HTML-escaping."""
-        import re
-        escaped = str(escape(text))
-        return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
 
     def flush_paragraph() -> None:
         nonlocal para_buf
         text = " ".join(x.strip() for x in para_buf if x.strip()).strip()
         para_buf = []
         if text:
-            html_parts.append(f"<p style=\"margin:0 0 10px 0;\">{_apply_inline(text)}</p>")
+            html_parts.append(f'<p style="margin:0 0 12px 0;">{_apply_inline(text)}</p>')
 
     for raw in lines:
         line = raw.strip()
@@ -995,7 +870,7 @@ def _format_summary_html(summary: str) -> Markup:
                 html_parts.append("</ul>")
                 in_list = False
             html_parts.append(
-                "<div style=\"margin:12px 0 6px 0; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#6b6f85;\">Key takeaways</div>"
+                '<div style="margin:14px 0 8px 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b6f85;font-weight:600;">Key takeaways</div>'
             )
             continue
 
@@ -1003,9 +878,9 @@ def _format_summary_html(summary: str) -> Markup:
         if is_bullet:
             flush_paragraph()
             if not in_list:
-                html_parts.append("<ul style=\"margin:0 0 10px 18px; padding:0;\">")
+                html_parts.append('<ul style="margin:0 0 12px 18px;padding:0;">')
                 in_list = True
-            html_parts.append(f"<li style=\"margin:0 0 6px 0;\">{_apply_inline(line[2:].strip())}</li>")
+            html_parts.append(f'<li style="margin:0 0 7px 0;">{_apply_inline(line[2:].strip())}</li>')
             continue
 
         if in_list:
@@ -1018,146 +893,86 @@ def _format_summary_html(summary: str) -> Markup:
     if in_list:
         html_parts.append("</ul>")
 
-    # Ensure Jinja doesn't escape our generated HTML
     return Markup("\n".join(html_parts))
 
 
+def _format_glossary_html(text: str) -> Markup:
+    s = (text or "").strip()
+    if not s:
+        return Markup('<p style="color:#9096bb;font-style:italic;margin:0;">No new terms identified.</p>')
+
+    if "no new terms" in s.lower():
+        return Markup(f'<p style="color:#9096bb;font-style:italic;margin:0;">{escape(s)}</p>')
+
+    parts: list[str] = []
+    # Split on blank lines between terms
+    blocks = re.split(r"\n\s*\n", s)
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        lines = block.splitlines()
+        first = lines[0].strip()
+        rest = " ".join(ln.strip() for ln in lines[1:]).strip()
+
+        term_m = re.match(r"^\*\*(.+?)\*\*$", first)
+        if term_m:
+            term = escape(term_m.group(1))
+            defn = escape(rest) if rest else ""
+            parts.append(
+                f'<p style="margin:0 0 4px 0;"><strong style="color:#1e2138;">{term}</strong></p>'
+                f'<p style="margin:0 0 20px 0;color:#4a4f70;">{defn}</p>'
+            )
+        else:
+            parts.append(f'<p style="margin:0 0 12px 0;">{escape(block)}</p>')
+
+    return Markup("\n".join(parts))
+
+
+def _format_outline_html(text: str) -> Markup:
+    s = (text or "").strip()
+    if not s:
+        return Markup("")
+    lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+    items = "".join(
+        f'<li style="margin:0 0 8px 0;color:#1e2138;list-style:decimal;">{escape(ln)}</li>'
+        for ln in lines
+    )
+    return Markup(f'<ol style="margin:0;padding-left:22px;list-style:decimal;">{items}</ol>')
+
+
 def _format_transcript_html(transcript: str) -> Markup:
-    # For cleaned transcript emails: keep it readable and preserve line breaks.
     s = (transcript or "").strip()
     if not s:
         return Markup("")
-    return Markup(f"<div style=\"white-space:pre-wrap;\">{escape(s)}</div>")
 
+    # Split into paragraphs and render as <p> tags
+    paras = [p.strip() for p in re.split(r"\n\n+", s) if p.strip()]
+    if not paras:
+        return Markup(f'<div style="white-space:pre-wrap;">{escape(s)}</div>')
 
-def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) -> str:
-    """
-    Produces an "email-friendly" transcript:
-    - improves punctuation/paragraph breaks
-    - does NOT summarize
-    """
-    t = (transcript or "").strip()
-    if not t:
-        return t
-
-    # Default: deterministic cleanup for accuracy (no LLM rewriting).
-    # Optional: allow Ollama-based cleanup if explicitly enabled.
-    use_ollama = os.environ.get("YTS_TRANSCRIPT_CLEAN_WITH_OLLAMA", "").strip().lower() in ("1", "true", "yes", "on")
-    if use_ollama and ollama_model:
-        transcribe_prompts = [p for p in load_transcribe_prompts() if p.enabled]
-        prompt_template = (transcribe_prompts[0].template if transcribe_prompts else "").strip()
-        prompt = (prompt_template.format(transcript=t) if prompt_template else f"\"\"\"\n{t}\n\"\"\"")
-        try:
-            res = subprocess.run(
-                ["ollama", "run", ollama_model],
-                input=prompt,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
-                timeout=300,
+    html_parts = []
+    for para in paras:
+        lines = para.splitlines()
+        # Check if first line looks like a section header (short, no sentence-ending punctuation)
+        if len(lines) >= 2 and len(lines[0]) < 60 and not lines[0].rstrip().endswith((".", "?", "!", ",")):
+            header = escape(lines[0].strip())
+            body = escape(" ".join(ln.strip() for ln in lines[1:]).strip())
+            html_parts.append(
+                f'<p style="margin:0 0 4px 0;font-weight:600;color:#22253d;font-size:13px;">{header}</p>'
+                f'<p style="margin:0 0 14px 0;">{body}</p>'
             )
-            out = (res.stdout or "").strip()
-            return out or t
-        except Exception:
-            return t
-
-    # Simple, accurate reflow:
-    # - remove blank-line noise
-    # - collapse runs of whitespace
-    # - add paragraph breaks on sentence boundaries (without changing wording)
-    opts = load_transcribe_options()
-    raw = " ".join([ln.strip() for ln in t.splitlines() if ln.strip()]).strip()
-
-    if opts.get("strip_stage_directions", False):
-        raw = re.sub(
-            r"\[(?:music|applause|laughter|silence|noise|intro|outro|advertisement)[^\]]*\]",
-            "",
-            raw,
-            flags=re.I,
-        )
-        raw = re.sub(r"\s{2,}", " ", raw).strip()
-
-    if opts.get("remove_fillers", True):
-        # Remove standalone filler tokens (single-word).
-        raw = re.sub(r"(?i)\b(um+|uh+|er+|ah+|eh+|hmm+)\b", "", raw)
-        # Remove multi-word hedge phrases used as fillers.
-        raw = re.sub(r"(?i)\b(kind of|sort of|you know|i mean)\b", "", raw)
-        # Remove obvious double-word stutters: "the the" -> "the"
-        raw = re.sub(r"(?i)\b(\w+)(\s+\1\b)+", r"\1", raw)
-        # Clean up orphaned commas left after filler removal (e.g. "Um, foo" → ", foo" → "foo")
-        raw = re.sub(r",\s*,+", ",", raw)              # double commas: ", ," → ","
-        raw = re.sub(r"(?<=[.!?])\s*,\s*", " ", raw)  # ". , foo" → ". foo"
-        raw = re.sub(r"^\s*,\s*", "", raw)             # leading ", foo" → "foo"
-        # Capitalize first letter after sentence-end punctuation (filler removal can leave lowercase starts)
-        raw = re.sub(r"(?<=[.!?])\s+([a-z])", lambda m: " " + m.group(1).upper(), raw)
-        raw = re.sub(r"\s{2,}", " ", raw).strip()
-
-    if opts.get("split_long_clauses", False):
-        # Split long compound sentences at ", and " / ", but " where both sides
-        # are substantial (>= 60 chars each).  Short enumerations like
-        # "cats, dogs, and birds" are left alone.
-        def _maybe_split_clause(m: re.Match) -> str:
-            before_start = m.string.rfind(". ", 0, m.start())
-            before_start = before_start + 2 if before_start >= 0 else 0
-            clause_before = m.string[before_start : m.start()]
-            clause_after = m.string[m.end() :]
-            next_end = clause_after.find(". ")
-            clause_after_preview = clause_after if next_end < 0 else clause_after[:next_end]
-            if len(clause_before.strip()) >= 60 and len(clause_after_preview.strip()) >= 40:
-                return f". {m.group(1).capitalize()} "
-            return m.group(0)
-
-        raw = re.sub(r",\s+(and|but)\s+", _maybe_split_clause, raw)
-        raw = re.sub(r"\s{2,}", " ", raw).strip()
-
-    if len(raw) <= 1200:
-        return raw
-
-    target = 1000 if opts.get("robust_sentence_breaks", False) else 1400
-    paras: list[str] = []
-    buf = ""
-    for part in re.split(r"(?<=[.!?])\s+", raw):
-        if not part:
-            continue
-        if buf and len(buf) + 1 + len(part) > target:
-            paras.append(buf.strip())
-            buf = part
         else:
-            buf = (buf + " " + part).strip()
-    if buf.strip():
-        paras.append(buf.strip())
-    out = "\n\n".join(paras).strip()
+            html_parts.append(f'<p style="margin:0 0 14px 0;">{escape(para)}</p>')
 
-    if opts.get("questions_own_paragraph", False):
-        # Put questions on their own paragraph (blank line before & after).
-        out = re.sub(r"(?m)(^.*\?\s*$)", r"\n\1\n", out)
-        out = re.sub(r"\n{3,}", "\n\n", out).strip()
+    return Markup("\n".join(html_parts))
 
-    if opts.get("qa_paragraph_breaks", False):
-        # Detect Q&A intro patterns and force a paragraph break before them.
-        # Matches: "First question", "Next question", "Final question",
-        #          "[Name] writes," "[Name] W. writes," "Question from [Name]"
-        out = re.sub(
-            r"(?i)(?<!\n\n)(?<!\n)(\b(?:first|second|third|fourth|fifth|next|last|final|closing)\s+question\b)",
-            r"\n\n\1",
-            out,
-        )
-        out = re.sub(
-            r"(?i)(?<!\n\n)(?<!\n)(\b[A-Z][a-z]+(?:\s+[A-Z][\w.]*)?\s+(?:writes?|asks?),)",
-            r"\n\n\1",
-            out,
-        )
-        out = re.sub(r"\n{3,}", "\n\n", out).strip()
 
-    return out
-
+# ---------------------------------------------------------------------------
+# Key-takeaways repair
+# ---------------------------------------------------------------------------
 
 def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | None, *, min_bullets: int = 3) -> str:
-    """
-    Default summary must contain at least `min_bullets` bullets under a "Key takeaways" line.
-    If the model forgets or produces too few, we repair it.
-    """
     s = (summary or "").strip()
     if not s:
         return s
@@ -1170,7 +985,8 @@ def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | Non
         if _has_enough_bullets(repaired, min_bullets):
             return repaired
         core = "\n".join([ln for ln in s.splitlines() if ln.strip()][:12]).strip()
-        return (core + "\n\nKey takeaways\n- Main idea\n- Why it matters\n- What to do next\n").strip()
+        bullets_placeholder = "\n".join(f"- Key point {i+1}" for i in range(min_bullets))
+        return (core + f"\n\nKey takeaways\n{bullets_placeholder}\n").strip()
 
     bullet_examples = "\n".join(f"- <point {i+1}>" for i in range(min_bullets))
     prompt = f"""Rewrite the summary below so it follows this format exactly. Output ONLY the rewritten summary — no preamble, no explanation.
@@ -1178,7 +994,7 @@ def _ensure_key_takeaways(summary: str, transcript: str, ollama_model: str | Non
 REQUIRED FORMAT:
 <1 sentence intro>
 
-<prose paragraphs, 7th grade reading level>
+<prose paragraphs>
 
 Key takeaways
 {bullet_examples}
@@ -1206,10 +1022,10 @@ Current (malformed) summary:
             text=True,
             check=True,
             timeout=120,
+            env=_child_env(),
         )
         fixed = (res.stdout or "").strip() or s
-        fixed = _trim_bullets(fixed, min_bullets)
-        return fixed
+        return _trim_bullets(fixed, min_bullets)
     except Exception:
         return _trim_bullets(s, min_bullets)
 
@@ -1218,7 +1034,7 @@ def _has_enough_bullets(text: str, min_count: int = 3) -> bool:
     m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
     if not m:
         return False
-    after = text[m.end() :].strip("\n")
+    after = text[m.end():].strip("\n")
     bullets = []
     for ln in after.splitlines():
         line = ln.strip()
@@ -1233,12 +1049,11 @@ def _has_enough_bullets(text: str, min_count: int = 3) -> bool:
 
 
 def _trim_bullets(text: str, max_count: int = 3) -> str:
-    """Keep at most `max_count` bullets under the Key takeaways section, preserving wrap-up."""
     m = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", text)
     if not m:
         return text.strip()
     before = text[: m.start()].rstrip()
-    after = text[m.end() :].lstrip()
+    after = text[m.end():].lstrip()
     bullets = []
     remaining_lines = []
     collecting_remaining = False
@@ -1247,7 +1062,6 @@ def _trim_bullets(text: str, max_count: int = 3) -> str:
         if not collecting_remaining and line.startswith("- "):
             bullets.append(line)
         elif bullets:
-            # Everything after the bullet block is the wrap-up
             collecting_remaining = True
             if line:
                 remaining_lines.append(line)
@@ -1258,19 +1072,261 @@ def _trim_bullets(text: str, max_count: int = 3) -> str:
     return "\n\n".join(parts).strip()
 
 
+# ---------------------------------------------------------------------------
+# Subprocess helpers
+# ---------------------------------------------------------------------------
+
+def _run(cmd: list[str]) -> None:
+    try:
+        subprocess.run(cmd, check=True, env=_child_env())
+    except subprocess.CalledProcessError as e:
+        if cmd and cmd[0] == "yt-dlp":
+            msg = (getattr(e, "stderr", None) or "") if hasattr(e, "stderr") else ""
+            if "ffprobe" in msg.lower() or "ffmpeg" in msg.lower():
+                raise RuntimeError(
+                    "Audio processing failed because ffmpeg/ffprobe was not found. "
+                    "Fix: install ffmpeg (brew install ffmpeg) and ensure Homebrew is on PATH."
+                ) from e
+            raise RuntimeError(
+                "Audio download failed. YouTube may be blocking automated downloads on this network. "
+                "Fix: set YTS_YTDLP_COOKIES_FROM_BROWSER (e.g. 'chrome' or 'safari') "
+                "or YTS_YTDLP_COOKIES_FILE to a cookies.txt export, then retry."
+            ) from e
+        raise
+
+
+def _run_capture(cmd: list[str]) -> str:
+    res = subprocess.run(
+        cmd,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=_child_env(),
+    )
+    return res.stdout or ""
+
+
+def _child_env() -> dict[str, str]:
+    env = dict(os.environ)
+    venv_bin = str(Path(sys.executable).parent)
+    base_path = env.get("PATH", "")
+    brew_prefixes = ["/opt/homebrew/bin", "/opt/homebrew/sbin"]
+    for p in reversed(brew_prefixes):
+        if p and p not in base_path:
+            base_path = f"{p}{os.pathsep}{base_path}" if base_path else p
+    env["PATH"] = f"{venv_bin}{os.pathsep}{base_path}"
+    return env
+
+
+# ---------------------------------------------------------------------------
+# Date formatting
+# ---------------------------------------------------------------------------
+
+def _fmt_published_at(published_at: str) -> str:
+    if not published_at:
+        return ""
+    from zoneinfo import ZoneInfo
+    eastern = ZoneInfo("America/New_York")
+    try:
+        dt = parsedate_to_datetime(published_at).astimezone(eastern)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
+    except Exception:
+        pass
+    try:
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(eastern)
+        return dt.strftime("%B %-d, %Y at %-I:%M %p ET")
+    except Exception:
+        pass
+    return published_at
+
+
+# ---------------------------------------------------------------------------
+# Stats / artifacts
+# ---------------------------------------------------------------------------
+
+def _ms_since(t0: float) -> int:
+    return int(round((time.perf_counter() - t0) * 1000))
+
+
+def _fmt_ms(ms: int | None) -> str:
+    if ms is None:
+        return "n/a"
+    return f"{ms / 1000:.2f} s"
+
+
+def _fmt_seconds(ms: int | None) -> float | None:
+    if ms is None:
+        return None
+    return round(ms / 1000.0, 2)
+
+
+def _fmt_mb(n: int | None) -> float | None:
+    if n is None:
+        return None
+    return round(n / (1024.0 * 1024.0), 2)
+
+
+def _format_beta_stats_text(s: BetaStats) -> str:
+    lines = [
+        "---",
+        "Beta stats",
+        f"- summary_id: {s.summary_id}",
+        f"- video_id: {s.video_id}",
+        f"- transcript_source: {s.transcript_source}",
+        f"- enabled_prompts: {', '.join(s.enabled_prompts)}",
+        f"- ollama_model: {s.ollama_model or 'n/a'}",
+        f"- rss_fetch_s: {_fmt_ms(s.rss_fetch_ms)}",
+        f"- download_media_s: {_fmt_ms(s.audio_download_ms)}",
+        f"- transcribe_s: {_fmt_ms(s.transcribe_ms)}",
+        f"- summarize_s: {_fmt_ms(s.summarize_ms)}",
+        "---",
+    ]
+    return "\n".join(lines)
+
+
+def _format_sections_text(sections: list[dict]) -> str:
+    parts: list[str] = []
+    for i, s in enumerate(sections):
+        label = str(s.get("label", "") or s.get("key", "") or "").strip() or "Section"
+        text = str(s.get("text", "") or "").strip()
+        if i > 0:
+            parts.append("\n---\n")
+        parts.append(f"{label}\n{text}".strip())
+    return "\n\n".join([p for p in parts if p.strip()]).strip()
+
+
+def _new_summary_id(video_id: str) -> str:
+    return f"{video_id}_{uuid4().hex[:8]}"
+
+
+def _summaries_dir(root: Path) -> Path:
+    p = root / "data" / "summaries"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _write_summary_artifact(
+    *,
+    root: Path,
+    summary_id: str,
+    channel_name: str,
+    video_title: str,
+    video_url: str,
+    video_id: str,
+    published_at: str,
+    transcript_source: str,
+    enabled_prompts: list[str],
+    ollama_model: str | None,
+    sections: list[dict],
+    beta_stats: BetaStats,
+) -> None:
+    path = _summaries_dir(root) / f"{summary_id}.txt"
+    beta_lines = _format_beta_stats_text(beta_stats)
+    body = "\n".join([
+        f"summary_id: {summary_id}",
+        f"video_id: {video_id}",
+        f"channel: {channel_name}",
+        f"title: {video_title}",
+        f"url: {video_url}",
+        f"published_at: {published_at}",
+        f"transcript_source: {transcript_source}",
+        f"enabled_prompts: {', '.join(enabled_prompts)}",
+        f"ollama_model: {ollama_model or 'n/a'}",
+        "",
+        "SUMMARY",
+        _format_sections_text(sections),
+        "",
+        beta_lines.strip(),
+        "",
+    ])
+    path.write_text(body, encoding="utf-8")
+
+
+def _append_summary_stats(*, root: Path, summary_id: str, beta_stats_view: dict) -> None:
+    path = _summaries_dir(root) / f"{summary_id}.txt"
+    if not path.exists():
+        return
+    try:
+        lines = [
+            "",
+            "FINAL_STATS",
+            f"email_render_s: {beta_stats_view.get('email_render_s', 'n/a')}",
+            f"email_send_s: {beta_stats_view.get('email_send_s', 'n/a')}",
+            f"total_before_send_s: {beta_stats_view.get('total_before_send_s', 'n/a')}",
+            f"total_to_send_s: {beta_stats_view.get('total_to_send_s', 'n/a')}",
+            "",
+        ]
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+    except Exception:
+        return
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
+
+def _best_effort_update_channel_name_in_config(*, config_path: Path, url: str, name: str) -> None:
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+    except Exception:
+        return
+    u = url.replace("\\", "\\\\").replace('"', '\\"')
+    n = name.replace("\\", "\\\\").replace('"', '\\"')
+
+    def repl(match: re.Match) -> str:
+        block = match.group(0)
+        if "name" in block:
+            return block
+        return block.replace("{", '{ name = "' + n + '", ', 1)
+
+    pattern = re.compile(r"\{[^}]*\burl\s*=\s*\"" + re.escape(u) + r"\"[^}]*\}")
+    updated, n_subs = pattern.subn(repl, raw, count=1)
+    if n_subs <= 0 or updated == raw:
+        return
+    try:
+        config_path.write_text(updated, encoding="utf-8")
+    except Exception:
+        return
+
+
+# ---------------------------------------------------------------------------
+# Cleanup / yt-dlp playlist
+# ---------------------------------------------------------------------------
+
+def _cleanup_downloads(root: Path) -> None:
+    keep_days_raw = os.environ.get("YTS_AUDIO_RETENTION_DAYS", "").strip()
+    try:
+        keep_days = int(keep_days_raw) if keep_days_raw else 7
+    except Exception:
+        keep_days = 7
+
+    if keep_days < 0:
+        return
+
+    cutoff = time.time() - (keep_days * 24 * 60 * 60)
+    dirs = [root / "data" / "audio", root / "data" / "audio" / "parakeet"]
+    for d in dirs:
+        if not d.exists() or not d.is_dir():
+            continue
+        for p in d.iterdir():
+            if not p.is_file():
+                continue
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink(missing_ok=True)
+            except Exception:
+                continue
+
+
 def _fetch_videos_via_ytdlp_playlist(
     *,
     playlist_url: str,
     limit: int,
     ytdlp_cookies_from_browser: str | None,
     ytdlp_cookies_file: str | None,
-) -> list[object]:
-    """
-    Best-effort playlist enumeration using yt-dlp (used when RSS is empty).
-
-    Returns objects shaped like `youtube_summarizer.youtube.Video` without importing it here:
-    { video_id, url, title, published_at }.
-    """
+) -> list:
     cookies_args: list[str] = []
     if ytdlp_cookies_file:
         cookies_args = ["--cookies", ytdlp_cookies_file]
@@ -1279,13 +1335,7 @@ def _fetch_videos_via_ytdlp_playlist(
 
     try:
         res = subprocess.run(
-            [
-                "yt-dlp",
-                "--flat-playlist",
-                "--dump-single-json",
-                *cookies_args,
-                playlist_url,
-            ],
+            ["yt-dlp", "--flat-playlist", "--dump-single-json", *cookies_args, playlist_url],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1312,24 +1362,17 @@ def _fetch_videos_via_ytdlp_playlist(
         channel_name = str((e or {}).get("uploader") or (e or {}).get("channel") or "").strip() or None
         if not vid:
             continue
-        out.append(
-            type(
-                "Video",
-                (),
-                {
-                    "video_id": vid,
-                    "url": f"https://www.youtube.com/watch?v={vid}",
-                    "title": title,
-                    "published_at": now_iso,
-                    "channel_name": channel_name,
-                },
-            )()
-        )
+        out.append(type("Video", (), {
+            "video_id": vid,
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "title": title,
+            "published_at": now_iso,
+            "channel_name": channel_name,
+        })())
     return out
 
 
 def _load_dotenv_if_present(path: Path) -> None:
-    # Minimal .env loader so you can run locally without extra deps.
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -1340,4 +1383,3 @@ def _load_dotenv_if_present(path: Path) -> None:
         k = k.strip()
         v = v.strip().strip('"').strip("'")
         os.environ.setdefault(k, v)
-

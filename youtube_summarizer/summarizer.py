@@ -4,8 +4,16 @@ import subprocess
 import re
 
 
-def summarize_with_ollama(*, transcript: str, model: str, prompt_template: str) -> str:
-    prompt = prompt_template.format(transcript=_compact_transcript(transcript))
+def summarize_with_ollama(
+    *,
+    transcript: str,
+    model: str,
+    prompt_template: str,
+    compact: bool = True,
+    **extra_vars,
+) -> str:
+    t = _compact_transcript(transcript) if compact else transcript
+    prompt = prompt_template.format(transcript=t, **extra_vars)
     res = subprocess.run(
         ["ollama", "run", model],
         input=prompt,
@@ -36,13 +44,9 @@ _OLLAMA_CONTROL_TOKEN_RE = re.compile(r"<\|[^|>]{1,80}\|>")
 
 def cleanup_summary(text: str) -> str:
     """
-    Safety net for common LLM failure modes during beta:
-    - Markdown headers leaking into the email (### ...)
-    - Repeating the same section twice (often after "Key takeaways")
-    - Adding "Conclusion" / extra recap blocks
-
-    This is intentionally conservative: it won't try to be clever, just prevent
-    the most obvious "double summary" feel.
+    Safety net for common LLM failure modes:
+    - Markdown headers leaking into the email
+    - Drops extra sections after Key takeaways (but preserves the walk-away after bullets)
     """
     s = (text or "").strip()
     if not s:
@@ -50,8 +54,8 @@ def cleanup_summary(text: str) -> str:
 
     # Remove markdown heading markers ("### Foo" -> "Foo")
     s = _MD_HEADER_RE.sub("", s).strip()
-    # Remove simple bold markers (**Foo** -> Foo)
-    s = _BOLD_MARKER_RE.sub(r"\1", s).strip()
+    # Remove simple bold markers (**Foo** -> Foo)  — but only outside glossary context
+    # (glossary output legitimately uses **bold** for terms; handled separately)
     # Drop any standalone bracketed sign-offs like "[End Brief]"
     s = _BRACKET_SIGNOFF_RE.sub("", s).strip()
     # Drop common model/control tokens sometimes leaked by local models
@@ -67,38 +71,38 @@ def cleanup_summary(text: str) -> str:
     if m:
         s = s[: m.start()].rstrip()
 
-    # Keep only the first "Key takeaways" section (case-insensitive).
-    # If multiple occur, truncate to the first block + its bullets.
+    # Keep only the first "Key takeaways" section — preserve walk-away after bullets.
     kt = re.search(r"(?im)^\s*key takeaways\s*:?\s*$", s)
     if kt:
         before = s[: kt.start()].rstrip()
         after = s[kt.end() :].lstrip()
 
-        # Capture up to 3 bullet lines; stop when we hit a blank line followed by non-bullet text.
         bullets: list[str] = []
         rest_lines: list[str] = []
+        collecting_rest = False
         for line in after.splitlines():
             ln = line.rstrip()
-            if ln.strip().startswith(("-", "*")):
-                bullets.append(ln.strip())
-                continue
-            rest_lines.append(ln)
-            # once we have bullets, and we hit a non-bullet, we stop collecting
-            if bullets:
-                break
+            stripped = ln.strip()
+            if not collecting_rest and stripped.startswith(("-", "*")):
+                bullets.append(stripped)
+            else:
+                if bullets:
+                    collecting_rest = True
+                if stripped:
+                    rest_lines.append(stripped)
 
         if bullets:
-            # Normalize bullets to "- " and cap at 3
             norm = []
-            for b in bullets[:3]:
+            for b in bullets:  # no cap here — tier-specific trimming handles it
                 btxt = b.lstrip("*-").strip()
                 if btxt:
                     norm.append(f"- {btxt}")
             bullets_block = "\n".join(norm)
-            s = "\n\n".join([before, "Key takeaways", bullets_block]).strip()
-        else:
-            # If no bullets, keep original structure
-            s = "\n\n".join([before, "Key takeaways", after]).strip()
+            parts = [before, "Key takeaways", bullets_block]
+            wrap = " ".join(rest_lines).strip()
+            if wrap:
+                parts.append(wrap)
+            s = "\n\n".join(parts).strip()
 
     return s.strip()
 
@@ -114,4 +118,3 @@ def _compact_transcript(transcript: str, *, head_chars: int = 14000, tail_chars:
     head = t[:head_chars].rstrip()
     tail = t[-tail_chars:].lstrip()
     return f"{head}\n\n[... transcript truncated ...]\n\n{tail}"
-

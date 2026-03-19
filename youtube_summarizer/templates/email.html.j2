@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ subject }}</title>
     <style>
-      /* Gmail and Apple Mail support <style> blocks */
-      p { margin: 0 0 10px 0; }
-      ul { margin: 4px 0 12px 0; padding: 0 0 0 0; list-style: none; }
-      li { margin: 0 0 7px 0; padding-left: 18px; position: relative; }
+      p { margin: 0 0 12px 0; }
+      ul { margin: 4px 0 14px 0; padding: 0; list-style: none; }
+      li { margin: 0 0 8px 0; padding-left: 18px; position: relative; }
       li::before { content: "–"; position: absolute; left: 0; color: #7c85c0; font-weight: 600; }
     </style>
   </head>
@@ -52,29 +51,44 @@
         </div>
 
         <!-- Content -->
-        <div style="padding:28px 30px 24px;">
+        <div style="padding:28px 30px 8px;">
 
           {% for s in sections %}
-          <!-- Section card -->
-          <div style="margin-bottom:22px;border-radius:13px;border:1px solid #dfe2f3;overflow:hidden;">
 
-            <!-- Label bar -->
-            <div style="padding:9px 18px;background:linear-gradient(90deg,#f0f2fc 0%,#f5f6fd 100%);border-bottom:1px solid #dfe2f3;">
-              <span style="font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#4b6cf6;">{{ s.label }}</span>
-            </div>
-
-            <!-- Body -->
-            <div style="padding:18px 20px;background:#fafafd;font-size:14px;color:#1e2138;line-height:1.68;">
+          {% if s.style == "opener" %}
+          <!-- Opener: headline block -->
+          <div style="margin-bottom:26px;padding-left:16px;border-left:3px solid #4b6cf6;">
+            <div style="font-size:22px;font-weight:600;color:#1e2138;line-height:1.4;">
               {{ s.html }}
             </div>
-
           </div>
+
+          {% elif s.style == "transcript" %}
+          <!-- Transcript block: smaller font -->
+          <div style="margin-bottom:24px;padding-top:24px;border-top:1px solid #e8eaf4;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#9096bb;margin-bottom:16px;">{{ s.label }}</div>
+            <div style="font-size:14px;color:#1e2138;line-height:1.68;">
+              {{ s.html }}
+            </div>
+          </div>
+
+          {% else %}
+          <!-- Body block: summary, glossary, outline -->
+          <div style="margin-bottom:24px;{% if not loop.first %}padding-top:24px;border-top:1px solid #e8eaf4;{% endif %}">
+            {% if s.label %}
+            <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#9096bb;margin-bottom:16px;">{{ s.label }}</div>
+            {% endif %}
+            <div style="font-size:16px;color:#1e2138;line-height:1.5;">
+              {{ s.html }}
+            </div>
+          </div>
+          {% endif %}
+
           {% endfor %}
 
-
-          <!-- Beta stats -->
+          <!-- Debug stats -->
           {% if beta_stats %}
-          <div style="margin-top:22px;padding:14px 18px;border:1px solid #e0e3f0;border-radius:11px;background:#f8f9fc;">
+          <div style="margin-top:16px;padding-top:20px;border-top:1px solid #e8eaf4;">
             <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#a0a6c8;margin-bottom:10px;">Debug stats</div>
             <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;color:#7178a0;white-space:pre-wrap;line-height:1.55;">summary_id: {{ beta_stats.summary_id }}
 video_id: {{ beta_stats.video_id }}

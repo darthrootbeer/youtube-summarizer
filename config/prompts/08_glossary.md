@@ -1,21 +1,26 @@
 # glossary
 
-enabled: false
+enabled: true
 label: Glossary
 
 ## short
 
 ```prompt
-Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
+Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
-Rules:
-- Exactly 3–5 terms used in the transcript that a newcomer to this topic might not know
-- Prioritise terms that are specific to this content — not generic technical words any dictionary would cover
-- Format each entry as: "Term: definition" (one entry per line)
-- Each definition: 1–2 sentences — explain what it means AND why it matters in this specific context
-- No intro sentence, no conclusion, no section headers, no bold
+Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 
-Stop after the last entry. Do not add anything else.
+Do NOT define any of these terms — they have been defined recently: {known_terms}
+
+If there are no new terms to define after excluding the above, output exactly:
+No new terms identified.
+
+Otherwise, for each term output exactly:
+
+**Term**
+One sentence definition written at a 7th grade reading level.
+
+Leave one blank line between terms. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """
@@ -26,17 +31,21 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
+Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
-Rules:
-- Exactly 5–8 terms used in the transcript that a newcomer to this topic might not know
-- Prioritise terms that are specific to this content — not generic technical words any dictionary would cover
-- Format each entry as: "Term: definition" (one entry per line)
-- Each definition: 1–2 sentences — explain what it means AND why it matters in this specific context
-- Include any named tools, frameworks, people, or proprietary concepts that appear
-- No intro sentence, no conclusion, no section headers, no bold
+Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 
-Stop after the last entry. Do not add anything else.
+Do NOT define any of these terms — they have been defined recently: {known_terms}
+
+If there are no new terms to define after excluding the above, output exactly:
+No new terms identified.
+
+Otherwise, for each term output exactly:
+
+**Term**
+One sentence definition written at a 7th grade reading level.
+
+Leave one blank line between terms. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """
@@ -47,18 +56,21 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY a glossary — no preamble, no "Here is...", no sign-off. Begin with the first term.
+Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
-Rules:
-- Exactly 8–14 terms used in the transcript that a newcomer to this topic might not know
-- Prioritise terms that are specific to this content — not generic technical words any dictionary would cover
-- Format each entry as: "Term: definition" (one entry per line)
-- Each definition: 1–2 sentences — explain what it means AND why it matters in this specific context
-- Include named tools, frameworks, people, organisations, or proprietary concepts that appear
-- Order alphabetically
-- No intro sentence, no conclusion, no section headers, no bold
+Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 
-Stop after the last entry. Do not add anything else.
+Do NOT define any of these terms — they have been defined recently: {known_terms}
+
+If there are no new terms to define after excluding the above, output exactly:
+No new terms identified.
+
+Otherwise, for each term output exactly:
+
+**Term**
+One sentence definition written at a 7th grade reading level.
+
+Leave one blank line between terms. Stop after the last definition. Do not add anything else.
 
 Transcript:
 """

@@ -82,7 +82,7 @@ When changing email layout, optimise for:
 
 The HTML template is `youtube_summarizer/templates/email.html.j2`.
 Summary text is converted to HTML by `_format_summary_html()` in `run.py`.
-Thumbnail URL is deterministic: `https://img.youtube.com/vi/{video_id}/hqdefault.jpg`.
+Thumbnail URL is deterministic: `https://img.youtube.com/vi/{video_id}/maxresdefault.jpg`.
 
 ---
 

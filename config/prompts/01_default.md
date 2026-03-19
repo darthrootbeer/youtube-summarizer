@@ -1,6 +1,6 @@
 # default
 
-enabled: true
+enabled: false
 label: Summary
 
 ## short
