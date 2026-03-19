@@ -6,7 +6,7 @@ label: Fact vs opinion
 ## short
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Separate the transcript into three sections using this exact structure:
 
@@ -42,7 +42,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Separate the transcript into three sections using this exact structure:
 
@@ -75,7 +75,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Separate the transcript into three sections using this exact structure:
 

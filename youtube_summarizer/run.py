@@ -959,8 +959,14 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None, 
                     if out:
                         ratio = len(out) / max(len(t), 1)
                         out_lower = out.lower()
+                        non_ws = re.sub(r"\s", "", out)
+                        cjk_count = len(re.findall(
+                            r"[\u2E80-\u2FFF\u3000-\u303F\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", out
+                        ))
+                        is_cjk = bool(non_ws) and (cjk_count / len(non_ws)) > 0.15
                         hallucinated = (
-                            ratio < 0.4
+                            is_cjk
+                            or ratio < 0.4
                             or out_lower.startswith("from the transcript")
                             or out_lower.startswith("in summary")
                             or out_lower.startswith("based on the")
@@ -970,8 +976,8 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None, 
                         )
                         if hallucinated:
                             log.warning(
-                                "Transcript LLM cleanup looks like a summary (ratio=%.2f) — using deterministic output",
-                                ratio,
+                                "Transcript LLM cleanup looks like a summary or non-English (ratio=%.2f, cjk=%s) — using deterministic output",
+                                ratio, is_cjk,
                             )
                         else:
                             return out

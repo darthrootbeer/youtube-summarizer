@@ -6,7 +6,7 @@ label: Key decisions + options
 ## short
 
 ```prompt
-Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
+Output in English only. Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
 
 Extract exactly 2–3 key decisions actually discussed in the transcript. For each, use this exact format:
 
@@ -33,7 +33,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
+Output in English only. Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
 
 Extract exactly 3–5 key decisions actually discussed in the transcript. For each, use this exact format:
 
@@ -61,7 +61,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
+Output in English only. Output ONLY the key decisions from the transcript — no preamble, no "Here is...", no sign-off. Begin with the first "Decision:" line.
 
 Extract exactly 5–8 key decisions actually discussed in the transcript. For each, use this exact format:
 

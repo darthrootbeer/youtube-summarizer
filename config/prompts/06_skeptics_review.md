@@ -6,7 +6,7 @@ label: Skeptic's review
 ## short
 
 ```prompt
-Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Use this exact structure:
 
@@ -39,7 +39,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Use this exact structure:
 
@@ -79,7 +79,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY a skeptical review — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Use this exact structure:
 

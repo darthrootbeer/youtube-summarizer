@@ -6,7 +6,7 @@ label: Glossary
 ## short
 
 ```prompt
-Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
+Output in English only. Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
 Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 
@@ -31,7 +31,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
+Output in English only. Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
 Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 
@@ -56,7 +56,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
+Output in English only. Output ONLY the glossary — no preamble, no intro sentence, no sign-off. Begin with the first term or the exact phrase "No new terms identified."
 
 Identify terms from this transcript that a general audience would benefit from having defined. Include technical terms, acronyms, proper nouns used as concepts, or field-specific jargon. Skip common everyday words.
 

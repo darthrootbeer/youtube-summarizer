@@ -6,7 +6,7 @@ label: Action checklist
 ## short
 
 ```prompt
-Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Exactly 6–8 action items total
@@ -28,7 +28,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Exactly 10–15 action items total
@@ -51,7 +51,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
+Output in English only. Output ONLY an action checklist — no preamble, no "Here is...", no sign-off. Begin with the first section label.
 
 Rules:
 - Exactly 18–25 action items total

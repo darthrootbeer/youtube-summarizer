@@ -6,7 +6,7 @@ label: TL;DR — things to remember
 ## short
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
 <TL;DR: 1–2 sentences — the single most important thing, stated as a direct claim with at least one specific detail>
 
@@ -32,7 +32,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
 <TL;DR: 2–3 sentences — the core argument or finding, stated as direct claims with specific details>
 
@@ -60,7 +60,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
+Output in English only. Output ONLY the following — no preamble, no "Here is...", no sign-off. Begin with the first word of the TL;DR.
 
 <TL;DR: 3–4 sentences — the core argument or finding, stated as direct claims with specific details>
 

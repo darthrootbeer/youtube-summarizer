@@ -6,7 +6,7 @@ label: Summary
 ## short
 
 ```prompt
-Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of the paragraph.
+Output in English only. Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of the paragraph.
 
 OUTPUT FORMAT:
 <1 paragraph — ~120 words of specific, concrete detail from the transcript>
@@ -37,7 +37,7 @@ Transcript:
 ## medium
 
 ```prompt
-Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of paragraph 1.
+Output in English only. Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of paragraph 1.
 
 OUTPUT FORMAT:
 <paragraph 1 — ~120 words: what it is about and why it matters, with specific evidence>
@@ -72,7 +72,7 @@ Transcript:
 ## long
 
 ```prompt
-Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of paragraph 1.
+Output in English only. Output ONLY the summary below — no preamble, no "Here is...", no sign-off. Begin with the first word of paragraph 1.
 
 OUTPUT FORMAT:
 <paragraph 1 — ~120 words: the core argument, situation, or thesis — what this is really about and why it matters>

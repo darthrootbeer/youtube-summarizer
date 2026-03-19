@@ -43,6 +43,8 @@ _MD_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s+", flags=re.MULTILINE)
 _BOLD_MARKER_RE = re.compile(r"\*\*(.*?)\*\*")
 _BRACKET_SIGNOFF_RE = re.compile(r"(?im)^\s*\[[^\]]*\]\s*$")
 _OLLAMA_CONTROL_TOKEN_RE = re.compile(r"<\|[^|>]{1,80}\|>")
+# CJK Unified Ideographs + common CJK blocks
+_CJK_RE = re.compile(r"[\u2E80-\u2FFF\u3000-\u303F\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 
 
 def cleanup_summary(text: str) -> str:
@@ -54,6 +56,11 @@ def cleanup_summary(text: str) -> str:
     s = (text or "").strip()
     if not s:
         return s
+
+    # Discard output that is predominantly CJK (model responded in Chinese/Japanese/Korean)
+    non_ws = re.sub(r"\s", "", s)
+    if non_ws and len(_CJK_RE.findall(s)) / len(non_ws) > 0.15:
+        return ""
 
     # Remove markdown heading markers ("### Foo" -> "Foo")
     s = _MD_HEADER_RE.sub("", s).strip()
