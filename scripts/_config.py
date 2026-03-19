@@ -252,36 +252,18 @@ def cmd_show_subscription_detail(args) -> None:
     print(f"  URL: {sub.get('url', '(none)')}")
     print()
 
-    explicit: list[str] = sub.get("prompts") or []
-
-    # Load all prompts
-    all_prompts = []
+    running = []
     for p in sorted(PROMPTS_DIR.glob("*.md")):
-        if p.name == "README.md":
+        if p.name.upper().startswith("README"):
             continue
         raw = p.read_text(encoding="utf-8")
-        key = re.sub(r"^\d+_?", "", p.stem)
-        label_m = re.search(r"(?mi)^\s*label\s*:\s*(.+)", raw)
-        label = label_m.group(1).strip() if label_m else key
         enabled_m = re.search(r"(?mi)^\s*enabled\s*:\s*(true|false)", raw)
-        enabled = (enabled_m.group(1).lower() == "true") if enabled_m else False
-        all_prompts.append({"key": key, "label": label, "enabled": enabled})
-
-    if explicit:
-        print(f"  Prompts (per-feed — {len(explicit)} selected):")
-        for p in all_prompts:
-            active = p["key"] in explicit
-            mark = "✓" if active else " "
-            faded = "" if active else "  "
-            print(f"    {mark}  {p['label']:{faded}}")
-    else:
-        running = [p for p in all_prompts if p["enabled"]]
-        off = [p for p in all_prompts if not p["enabled"]]
-        print(f"  Prompts: all globally-enabled ({len(running)} running, {len(off)} off)")
-        for p in running:
-            print(f"    ✓  {p['label']}")
-        if off:
-            print(f"       ({len(off)} others globally disabled)")
+        if not (enabled_m and enabled_m.group(1).lower() == "true"):
+            continue
+        label_m = re.search(r"(?mi)^\s*label\s*:\s*(.+)", raw)
+        label = label_m.group(1).strip() if label_m else re.sub(r"^\d+_?", "", p.stem)
+        running.append(label)
+    print(f"  Prompts: {', '.join(running)}")
 
 
 def cmd_main_menu_subs(_args) -> None:
