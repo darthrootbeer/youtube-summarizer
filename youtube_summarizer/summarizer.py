@@ -10,10 +10,13 @@ def summarize_with_ollama(
     model: str,
     prompt_template: str,
     compact: bool = True,
+    video_context: str | None = None,
     **extra_vars,
 ) -> str:
     t = _compact_transcript(transcript) if compact else transcript
     prompt = prompt_template.format(transcript=t, **extra_vars)
+    if video_context:
+        prompt = f"VIDEO CONTEXT\n{video_context}\n---\n\n{prompt}"
     res = subprocess.run(
         ["ollama", "run", model],
         input=prompt,

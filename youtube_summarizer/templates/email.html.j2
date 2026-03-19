@@ -111,6 +111,8 @@ video_duration_s: {{ beta_stats.video_duration_s | round(1) if beta_stats.video_
 transcribe_s: {{ beta_stats.transcribe_s or "n/a" }}
 summarize_s: {{ beta_stats.summarize_s or "n/a" }}
 avg_cpu_pct: {{ beta_stats.avg_cpu_pct or "n/a" }}
+has_description: {{ beta_stats.has_description }}
+chapters_count: {{ beta_stats.chapters_count }}
 email_render_s: {{ beta_stats.email_render_s or "n/a" }}
 email_send_s: {{ beta_stats.email_send_s or "n/a" }}
 total_before_send_s: {{ beta_stats.total_before_send_s or "n/a" }}

@@ -198,6 +198,21 @@ def run_once(limit: int = 10) -> int:
                 ru_start = resource.getrusage(resource.RUSAGE_SELF)
                 summary_id = _new_summary_id(v.video_id)
 
+                # Fetch video metadata (description, chapters, duration) — fast, no audio download
+                _meta_cookies: list[str] = []
+                if settings.ytdlp_cookies_file:
+                    _meta_cookies = ["--cookies", settings.ytdlp_cookies_file]
+                elif settings.ytdlp_cookies_from_browser:
+                    _meta_cookies = ["--cookies-from-browser", settings.ytdlp_cookies_from_browser]
+                log.debug("  fetching video metadata ...")
+                meta = _fetch_video_metadata(v.url, _meta_cookies)
+                meta_description = (meta.get("description") or "").strip() or None
+                meta_chapters = meta.get("chapters") or None
+                meta_duration_s: float | None = meta.get("duration") or None
+                video_context = _build_video_context(clean_title, meta_description, meta_chapters)
+                log.debug("  metadata: description=%s chapters=%s duration=%s",
+                          bool(meta_description), len(meta_chapters) if meta_chapters else 0, meta_duration_s)
+
                 log.debug("  fetching transcript via %s ...", settings.transcribe_backend)
                 try:
                     transcript, transcript_stats = _get_transcript(
@@ -237,6 +252,9 @@ def run_once(limit: int = 10) -> int:
                     tier=tier,
                     root=root,
                     prompt_map=prompt_map,
+                    video_context=video_context,
+                    chapters=meta_chapters,
+                    video_url=v.url,
                 )
                 summarize_ms = _ms_since(t_sum_total)
 
@@ -283,6 +301,8 @@ def run_once(limit: int = 10) -> int:
                     "transcribe_s": _fmt_seconds(beta_stats.transcribe_ms),
                     "summarize_s": _fmt_seconds(beta_stats.summarize_ms),
                     "avg_cpu_pct": beta_stats.avg_cpu_pct,
+                    "has_description": bool(meta_description),
+                    "chapters_count": len(meta_chapters) if meta_chapters else 0,
                     "email_render_s": None,
                     "email_send_s": None,
                     "total_before_send_s": None,
@@ -291,7 +311,7 @@ def run_once(limit: int = 10) -> int:
                 }
 
                 published_at_display = _fmt_published_at(v.published_at)
-                video_duration_display = _fmt_duration(transcript_stats.audio_duration_s)
+                video_duration_display = _fmt_duration(meta_duration_s or transcript_stats.audio_duration_s)
                 render_ctx = dict(
                     subject=subject,
                     source_label=source_label,
@@ -404,6 +424,9 @@ def _build_email_sections(
     tier: dict,
     root: Path,
     prompt_map: dict,
+    video_context: str | None = None,
+    chapters: list | None = None,
+    video_url: str = "",
 ) -> tuple[list[dict], list[str], list[str]]:
     """
     Builds all 5 email sections in fixed order:
@@ -420,7 +443,7 @@ def _build_email_sections(
         log.info("  [1/5] opener ...")
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
-        out = _run_llm(transcript, ollama_model, tmpl)
+        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"opener={_fmt_ms(elapsed)}")
         enabled_keys.append("opener")
@@ -439,7 +462,7 @@ def _build_email_sections(
         log.info("  [2/5] summary (%s tier) ...", tier["tier"])
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
-        out = _summarize(transcript, ollama_model, tmpl)
+        out = _summarize(transcript, ollama_model, tmpl, video_context=video_context)
         out = _ensure_key_takeaways(out, transcript, ollama_model, min_bullets=int(tier["bullet_count"]))
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"summary={_fmt_ms(elapsed)}")
@@ -459,7 +482,7 @@ def _build_email_sections(
         log.info("  [3/5] glossary ...")
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
-        glossary_out, new_terms = _run_glossary(transcript, ollama_model, tmpl, root)
+        glossary_out, new_terms = _run_glossary(transcript, ollama_model, tmpl, root, video_context=video_context)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"glossary={_fmt_ms(elapsed)}")
         enabled_keys.append("glossary")
@@ -472,29 +495,48 @@ def _build_email_sections(
             "html": _format_glossary_html(glossary_out),
         })
 
-    # 4. Outline
-    if "outline" in prompt_map:
+    # 4. Outline — use creator-provided chapters if available, else LLM
+    log.info("  [4/5] outline ...")
+    t0 = time.perf_counter()
+    if chapters:
+        outline_html = _format_chapters_outline_html(chapters, video_url)
+        outline_text = "\n".join(
+            f"{_ts_fmt(int(ch.get('start_time') or 0))}  {ch.get('title','').strip()}"
+            for ch in chapters
+        )
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"outline(chapters)={_fmt_ms(elapsed)}")
+        source_label_outline = "Chapters"
+    elif "outline" in prompt_map:
         p = prompt_map["outline"]
-        log.info("  [4/5] outline ...")
-        t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
-        out = _run_llm(transcript, ollama_model, tmpl)
+        out = _run_llm(transcript, ollama_model, tmpl, video_context=video_context)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"outline={_fmt_ms(elapsed)}")
-        enabled_keys.append("outline")
-        log.info("  [4/5] outline done in %s", _fmt_ms(elapsed))
+        outline_text = out
+        outline_html = _format_outline_html(out)
+        source_label_outline = "Outline"
+    else:
+        outline_text = outline_html = ""
+        source_label_outline = "Outline"
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"outline=skipped")
+
+    enabled_keys.append("outline")
+    log.info("  [4/5] outline done in %s", _fmt_ms(elapsed))
+    if outline_html:
         sections.append({
             "key": "outline",
-            "label": "Outline",
+            "label": source_label_outline,
             "style": "body",
-            "text": out,
-            "html": _format_outline_html(out),
+            "text": outline_text,
+            "html": outline_html,
         })
 
     # 5. Transcript (always runs — full text, LLM cleanup)
     log.info("  [5/5] transcript cleanup ...")
     t0 = time.perf_counter()
-    cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model)
+    cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model, video_context=video_context)
     elapsed = _ms_since(t0)
     per_prompt_s.append(f"transcript={_fmt_ms(elapsed)}")
     enabled_keys.append("transcript")
@@ -514,7 +556,7 @@ def _build_email_sections(
 # LLM helpers
 # ---------------------------------------------------------------------------
 
-def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
+def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None) -> str:
     """Run a prompt through Ollama with compacted transcript. Falls back to first 500 chars."""
     if ollama_model:
         try:
@@ -523,13 +565,14 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str) ->
                 model=ollama_model,
                 prompt_template=prompt_template,
                 compact=True,
+                video_context=video_context,
             )
         except Exception as e:
             log.warning("LLM call failed (%s) — using fallback", e)
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
 
 
-def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) -> str:
+def _summarize(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None) -> str:
     if ollama_model:
         try:
             out = summarize_with_ollama(
@@ -537,6 +580,7 @@ def _summarize(transcript: str, ollama_model: str | None, prompt_template: str) 
                 model=ollama_model,
                 prompt_template=prompt_template,
                 compact=True,
+                video_context=video_context,
             )
             if out:
                 return out
@@ -550,6 +594,8 @@ def _run_glossary(
     ollama_model: str | None,
     prompt_template: str,
     root: Path,
+    *,
+    video_context: str | None = None,
 ) -> tuple[str, list[str]]:
     """Run the glossary prompt with skip-term injection. Returns (output_text, new_term_names)."""
     skip = get_skip_terms(root)
@@ -565,13 +611,24 @@ def _run_glossary(
             prompt_template=prompt_template,
             compact=True,
             known_terms=known_terms_str,
+            video_context=video_context,
         )
     except Exception as e:
         log.warning("Glossary LLM call failed (%s)", e)
         return "No new terms identified.", []
 
-    if not out or "no new terms" in out.lower():
-        return out or "No new terms identified.", []
+    if not out:
+        return "No new terms identified.", []
+
+    if "no new terms" in out.lower():
+        return "No new terms identified.", []
+
+    # Hallucination guard: valid glossary must have at least one **Term** pattern.
+    # If none found, or output is very long (transcript echo), discard.
+    has_terms = bool(re.search(r"^\*\*.+?\*\*", out, re.MULTILINE))
+    if not has_terms or len(out) > 4000:
+        log.warning("Glossary output looks invalid (has_terms=%s, len=%d) — discarding", has_terms, len(out))
+        return "No new terms identified.", []
 
     new_terms = _parse_glossary_terms(out)
     if new_terms:
@@ -740,7 +797,7 @@ def _get_transcript(
     )
 
 
-def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) -> str:
+def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None, video_context: str | None = None) -> str:
     """
     Cleans transcript for the email transcript section.
     Step 1: deterministic pre-pass (filler removal, paragraph breaks, etc.)
@@ -824,6 +881,8 @@ def _clean_transcript_for_reading(transcript: str, *, ollama_model: str | None) 
             prompt_template = transcribe_prompts[0].template.strip()
             if prompt_template:
                 prompt = prompt_template.format(transcript=t)
+                if video_context:
+                    prompt = f"VIDEO CONTEXT\n{video_context}\n---\n\n{prompt}"
                 try:
                     res = subprocess.run(
                         ["ollama", "run", ollama_model],
@@ -982,6 +1041,70 @@ def _format_outline_html(text: str) -> Markup:
         for ln in lines
     )
     return Markup(f'<ol style="margin:0;padding-left:22px;list-style:decimal;">{items}</ol>')
+
+
+def _ts_fmt(seconds: int) -> str:
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _format_chapters_outline_html(chapters: list, video_url: str) -> str:
+    """Render creator chapters as a linked list with timestamp URLs."""
+    # Build base URL for timestamp anchors: strip existing &t= if present
+    base = re.sub(r"[&?]t=\d+", "", video_url)
+    sep = "&" if "?" in base else "?"
+    items = []
+    for ch in chapters:
+        t = int(ch.get("start_time") or 0)
+        ts_url = f"{base}{sep}t={t}"
+        ts_display = _ts_fmt(t)
+        title = escape(ch.get("title", "").strip())
+        items.append(
+            f'<span style="color:#9096bb;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">'
+            f'<a href="{ts_url}" style="color:#9096bb;text-decoration:none;">{ts_display}</a>'
+            f'</span>'
+            f'&ensp;{title}'
+        )
+    return Markup("<br>\n".join(items))
+
+
+def _fetch_video_metadata(video_url: str, cookies_args: list[str]) -> dict:
+    """Fetch yt-dlp JSON metadata (no download). Returns {} on any failure."""
+    try:
+        res = subprocess.run(
+            ["yt-dlp", "--dump-json", *cookies_args, video_url],
+            capture_output=True, text=True, timeout=30, env=_child_env(),
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return json.loads(res.stdout.strip())
+    except Exception as e:
+        log.debug("_fetch_video_metadata failed: %s", e)
+    return {}
+
+
+def _build_video_context(title: str, description: str | None, chapters: list | None) -> str | None:
+    parts: list[str] = []
+    if description and description.strip():
+        desc = description.strip()
+        if len(desc) > 900:
+            # Keep first 900 chars, try to cut at a newline boundary
+            cut = desc.rfind("\n", 0, 900)
+            desc = desc[: cut if cut > 400 else 900].strip() + "…"
+        parts.append(f"Description:\n{desc}")
+    if chapters:
+        lines = []
+        for ch in chapters:
+            t = int(ch.get("start_time") or 0)
+            h, rem = divmod(t, 3600)
+            m, s = divmod(rem, 60)
+            ts = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+            lines.append(f"{ts}  {ch.get('title', '').strip()}")
+        if lines:
+            parts.append("Chapters:\n" + "\n".join(lines))
+    if not parts:
+        return None
+    return f"Title: {title}\n" + "\n\n".join(parts)
 
 
 def _format_transcript_html(transcript: str) -> Markup:
