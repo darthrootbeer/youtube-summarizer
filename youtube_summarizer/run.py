@@ -475,9 +475,13 @@ def _build_email_sections(
     per_prompt_s: list[str] = []
     enabled_keys: list[str] = []
 
-    is_short_video = video_duration_s is not None and video_duration_s < 180
+    is_short_video = (
+        (video_duration_s is not None and video_duration_s < 180)
+        or "/shorts/" in video_url
+    )
     if is_short_video:
-        log.info("  short video (%.0fs < 3 min) — skipping summary, glossary, transcript", video_duration_s)
+        log.info("  short video (duration=%s, url=%s) — skipping summary, glossary, transcript",
+                 f"{video_duration_s:.0f}s" if video_duration_s is not None else "unknown", video_url)
 
     # 1. Opener
     if "opener" in prompt_map:
