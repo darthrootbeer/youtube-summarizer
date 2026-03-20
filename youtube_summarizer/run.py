@@ -475,6 +475,10 @@ def _build_email_sections(
     per_prompt_s: list[str] = []
     enabled_keys: list[str] = []
 
+    is_short_video = video_duration_s is not None and video_duration_s < 180
+    if is_short_video:
+        log.info("  short video (%.0fs < 3 min) — skipping summary, glossary, transcript", video_duration_s)
+
     # 1. Opener
     if "opener" in prompt_map:
         p = prompt_map["opener"]
@@ -496,7 +500,7 @@ def _build_email_sections(
         })
 
     # 2. Summary
-    if "summary" in prompt_map:
+    if not is_short_video and "summary" in prompt_map:
         p = prompt_map["summary"]
         log.info("  [2/5] summary (%s tier) ...", tier["tier"])
         t0 = time.perf_counter()
@@ -516,7 +520,7 @@ def _build_email_sections(
         })
 
     # 3. Glossary
-    if "glossary" in prompt_map:
+    if not is_short_video and "glossary" in prompt_map:
         p = prompt_map["glossary"]
         log.info("  [3/5] glossary ...")
         t0 = time.perf_counter()
@@ -573,21 +577,25 @@ def _build_email_sections(
             "html": outline_html,
         })
 
-    # 5. Transcript (always runs — full text, LLM cleanup)
-    log.info("  [5/5] transcript cleanup ...")
-    t0 = time.perf_counter()
-    cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model, video_context=video_context)
-    elapsed = _ms_since(t0)
-    per_prompt_s.append(f"transcript={_fmt_ms(elapsed)}")
-    enabled_keys.append("transcript")
-    log.info("  [5/5] transcript done in %s", _fmt_ms(elapsed))
-    sections.append({
-        "key": "transcript",
-        "label": "Transcript",
-        "style": "transcript",
-        "text": cleaned,
-        "html": _format_transcript_html(cleaned),
-    })
+    # 5. Transcript (skipped for short videos < 3 min)
+    if not is_short_video:
+        log.info("  [5/5] transcript cleanup ...")
+        t0 = time.perf_counter()
+        cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model, video_context=video_context)
+        elapsed = _ms_since(t0)
+        per_prompt_s.append(f"transcript={_fmt_ms(elapsed)}")
+        enabled_keys.append("transcript")
+        log.info("  [5/5] transcript done in %s", _fmt_ms(elapsed))
+        sections.append({
+            "key": "transcript",
+            "label": "Transcript",
+            "style": "transcript",
+            "text": cleaned,
+            "html": _format_transcript_html(cleaned),
+        })
+    else:
+        per_prompt_s.append("transcript=skipped(short)")
+        log.info("  [5/5] transcript skipped (short video)")
 
     return sections, per_prompt_s, enabled_keys
 

@@ -7,6 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.1] — 2026-03-19
+
+### Changed
+- Short videos (< 3 minutes) now skip the summary, glossary, and transcript sections; opener, outline/chapters, and debug stats still render.
+
+---
+
 ## [2.0.0] — 2026-03-19
 
 ### Added
