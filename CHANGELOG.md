@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.3] — 2026-03-21
+
+### Fixed
+- `_run_llm` now treats an empty/whitespace response from Ollama as a failure and falls back to the transcript excerpt, preventing silent blank sections (e.g. empty opener) in the email.
+- Glossary "no new terms" detection now catches model variant phrasings such as "No new entries were found" in addition to the canonical form.
+- Glossary hallucination guard now requires the first non-blank output line to be a `**Term**` line; preamble prose (even if bold) is discarded rather than passed through.
+- Summary prompt (`02_summary.md`) — added explicit `Stop after the last walk-away sentence` to all three tiers to reduce trailing sign-off sentences.
+
+---
+
 ## [2.0.2] — 2026-03-20
 
 ### Fixed
@@ -135,6 +145,9 @@ First public release.
 ---
 
 <!-- Links -->
+[2.0.3]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.2...v2.0.3
+[2.0.2]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/darthrootbeer/youtube-summarizer/compare/v1.1.0...v1.2.0

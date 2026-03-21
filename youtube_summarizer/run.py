@@ -612,7 +612,7 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *,
     """Run a prompt through Ollama with compacted transcript. Falls back to first 500 chars."""
     if ollama_model:
         try:
-            return summarize_with_ollama(
+            out = summarize_with_ollama(
                 transcript=transcript,
                 model=ollama_model,
                 prompt_template=prompt_template,
@@ -620,6 +620,9 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *,
                 video_context=video_context,
                 **extra_vars,
             )
+            if out and out.strip():
+                return out
+            log.warning("LLM call returned empty output — using fallback")
         except Exception as e:
             log.warning("LLM call failed (%s) — using fallback", e)
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
@@ -713,14 +716,17 @@ def _run_glossary(
     if not out:
         return "No new terms identified.", []
 
-    if "no new terms" in out.lower():
+    _NO_NEW_TERMS_PHRASES = ("no new terms", "no new entries", "no terms identified", "no terms found")
+    if any(phrase in out.lower() for phrase in _NO_NEW_TERMS_PHRASES):
         return "No new terms identified.", []
 
-    # Hallucination guard: valid glossary must have at least one **Term** pattern.
-    # If none found, or output is very long (transcript echo), discard.
-    has_terms = bool(re.search(r"^\*\*.+?\*\*", out, re.MULTILINE))
-    if not has_terms or len(out) > 4000:
-        log.warning("Glossary output looks invalid (has_terms=%s, len=%d) — discarding", has_terms, len(out))
+    # Hallucination guard: valid glossary must start with a **Term** line.
+    # Preamble prose (even if bold) means the model ignored the format instruction.
+    # Also discard if output is suspiciously long (transcript echo).
+    first_line = next((ln for ln in out.splitlines() if ln.strip()), "")
+    first_line_is_term = bool(re.match(r"^\*\*[^*]+\*\*\s*$", first_line))
+    if not first_line_is_term or len(out) > 4000:
+        log.warning("Glossary output looks invalid (first_line_is_term=%s, len=%d) — discarding", first_line_is_term, len(out))
         return "No new terms identified.", []
 
     new_terms = _parse_glossary_terms(out)

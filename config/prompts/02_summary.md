@@ -28,6 +28,8 @@ Rules:
 - Then exactly 3 bullets starting with "- "
 - Then exactly 1 walk-away sentence — stop immediately after it
 
+Stop after the walk-away sentence. Do not add anything else.
+
 Transcript:
 """
 {transcript}
@@ -62,6 +64,8 @@ Rules:
 - After paragraph 2 write exactly the line "Key takeaways" (nothing else on that line)
 - Then exactly 5 bullets starting with "- "
 - Then exactly 1–2 walk-away sentences — stop immediately after them
+
+Stop after the last walk-away sentence. Do not add anything else.
 
 Transcript:
 """
@@ -101,6 +105,8 @@ Rules:
 - After paragraph 3 write exactly the line "Key takeaways" (nothing else on that line)
 - Then exactly 7 bullets starting with "- "
 - Then exactly 2–3 walk-away sentences — stop immediately after them
+
+Stop after the last walk-away sentence. Do not add anything else.
 
 Transcript:
 """
