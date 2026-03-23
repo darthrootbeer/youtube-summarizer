@@ -219,6 +219,19 @@ def run_once(limit: int = 10) -> int:
 
                 clean_title = _strip_hashtags(v.title)
                 log.info("Processing [%s] '%s' — %s", ch.source_type, clean_title, v.video_id)
+
+                # Mark seen immediately so no subsequent run (or a run triggered by a
+                # state wipe) can pick this video up again, regardless of whether
+                # transcription or email succeeds.
+                if not settings.dry_run:
+                    db.mark_seen(conn, db.SeenVideo(
+                        video_id=v.video_id,
+                        video_url=v.url,
+                        channel_name=video_channel_name,
+                        video_title=clean_title,
+                        published_at=v.published_at,
+                    ))
+
                 t_total = time.perf_counter()
                 ru_start = resource.getrusage(resource.RUSAGE_SELF)
                 summary_id = _new_summary_id(v.video_id)
@@ -253,14 +266,6 @@ def run_once(limit: int = 10) -> int:
                     )
                 except RuntimeError as e:
                     log.warning("  skipping '%s' — transcript unavailable: %s", clean_title, e)
-                    if not settings.dry_run:
-                        db.mark_seen(conn, db.SeenVideo(
-                            video_id=v.video_id,
-                            video_url=v.url,
-                            channel_name=video_channel_name,
-                            video_title=clean_title,
-                            published_at=v.published_at,
-                        ))
                     remaining -= 1
                     continue
 
@@ -429,15 +434,6 @@ def run_once(limit: int = 10) -> int:
                     beta_stats_view["total_processing_s"] = beta_stats_view.get("total_before_send_s")
                     _append_summary_stats(root=root, summary_id=summary_id, beta_stats_view=beta_stats_view)
 
-                if email_ok and not settings.dry_run:
-                    log.debug("  marking seen: %s", v.video_id)
-                    db.mark_seen(conn, db.SeenVideo(
-                        video_id=v.video_id,
-                        video_url=v.url,
-                        channel_name=video_channel_name,
-                        video_title=clean_title,
-                        published_at=v.published_at,
-                    ))
                 remaining -= 1
                 processed += 1
                 log.info("  done: total=%s remaining_slots=%d", _fmt_ms(_ms_since(t_total)), remaining)

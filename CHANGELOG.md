@@ -7,6 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.5] — 2026-03-23
+
+### Fixed
+- Videos are now marked seen immediately when processing begins, not after email send. This closes the last path to duplicate emails: a video that starts processing can never be picked up by a subsequent run, regardless of whether transcription or email succeeds.
+
+---
+
 ## [2.0.4] — 2026-03-23
 
 ### Fixed
@@ -153,6 +160,7 @@ First public release.
 ---
 
 <!-- Links -->
+[2.0.5]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.1...v2.0.2
