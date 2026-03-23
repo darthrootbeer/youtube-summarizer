@@ -186,16 +186,25 @@ def run_once(limit: int = 10) -> int:
             if is_queue:
                 prev_queue_ids = get_queue_state(conn, ch.url)
                 current_queue_ids = {v.video_id for v in videos}
-                save_queue_state(conn, ch.url, current_queue_ids)
+                # Only persist state when we got a non-empty result — a transient
+                # empty fetch must not wipe the previous state, which would cause
+                # all already-processed videos to be treated as new on the next run.
+                if current_queue_ids:
+                    save_queue_state(conn, ch.url, current_queue_ids)
                 log.debug("Queue state: %d prev, %d current", len(prev_queue_ids), len(current_queue_ids))
 
             for v in videos:
                 if remaining <= 0:
                     break
                 if is_queue:
-                    # New entry = wasn't in the queue last poll (re-added or genuinely new)
                     was_in_queue_before = v.video_id in prev_queue_ids
-                    if was_in_queue_before and db.has_seen(conn, v.video_id):
+                    # Skip if already processed, UNLESS the video was explicitly
+                    # re-added to the queue (absent from a valid non-empty previous
+                    # state).  An empty prev_queue_ids is treated as unreliable
+                    # (e.g. first run or wiped by a failed fetch) so it does NOT
+                    # count as evidence that the video was re-added.
+                    explicitly_readded = not was_in_queue_before and bool(prev_queue_ids)
+                    if db.has_seen(conn, v.video_id) and not explicitly_readded:
                         log.debug("  skip (queue, already processed): %s", v.title)
                         continue
                 elif db.has_seen(conn, v.video_id):

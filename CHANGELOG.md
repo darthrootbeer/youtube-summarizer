@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.4] — 2026-03-23
+
+### Fixed
+- Queue deduplication: a transient empty playlist fetch no longer wipes the `queue_state` table, which was causing all previously-processed videos to be re-sent on the next successful run.
+- Queue skip logic hardened: a video already in `seen_videos` is now skipped even when `queue_state` is empty (e.g. first run or corrupted state), unless the video was explicitly re-added to a previously non-empty queue.
+
+---
+
 ## [2.0.3] — 2026-03-21
 
 ### Fixed
@@ -145,6 +153,7 @@ First public release.
 ---
 
 <!-- Links -->
+[2.0.4]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.0...v2.0.1
