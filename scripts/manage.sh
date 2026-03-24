@@ -440,6 +440,7 @@ cmd_manage_summarize_queue() {
 
     local actions=()
     if [ -n "$current_url" ]; then
+      actions+=("🔍  View pending")
       actions+=("✏️   Edit URL & prompts")
       actions+=("🗑   Remove queue")
     else
@@ -452,6 +453,35 @@ cmd_manage_summarize_queue() {
       --header "  ──────────────────────────────") || return
 
     case "$action" in
+      "🔍"*)
+        section "Pending in queue"
+        "$PYTHON" - "$REPO_ROOT" "$current_url" <<'PYEOF'
+import sys, tomllib
+from youtube_summarizer.config import repo_root
+from youtube_summarizer.youtube import source_url_to_rss, fetch_latest_videos_from_rss
+from youtube_summarizer import db
+
+repo  = sys.argv[1]
+url   = sys.argv[2]
+rss   = source_url_to_rss(url)
+videos = fetch_latest_videos_from_rss(rss, limit=30) if rss else []
+
+with db.connect(repo_root()) as conn:
+    pending = [v for v in videos if not db.has_seen(conn, v.video_id)]
+    done    = [v for v in videos if     db.has_seen(conn, v.video_id)]
+
+if not videos:
+    print("  (could not fetch playlist — check URL or network)")
+elif not pending:
+    print(f"  Nothing pending  ·  {len(done)} of {len(videos)} already processed")
+else:
+    print(f"  {len(pending)} pending  ·  {len(done)} already processed  ·  {len(videos)} in RSS window\n")
+    for v in pending:
+        ch = v.channel_name or "unknown"
+        print(f"  • [{v.video_id}]  {ch}  —  {v.title}")
+PYEOF
+        pause
+        ;;
       "✏️"* | "➕"*)
         _edit_summarize_queue "$current_url" "$current_name"
         ;;
