@@ -49,33 +49,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS queue_state (
-          queue_url TEXT NOT NULL,
-          video_id  TEXT NOT NULL,
-          PRIMARY KEY (queue_url, video_id)
-        );
-        """
-    )
-    conn.commit()
-
-
-def get_queue_state(conn: sqlite3.Connection, queue_url: str) -> set[str]:
-    """Return the set of video IDs last seen in this queue."""
-    rows = conn.execute(
-        "SELECT video_id FROM queue_state WHERE queue_url = ?", (queue_url,)
-    ).fetchall()
-    return {r[0] for r in rows}
-
-
-def save_queue_state(conn: sqlite3.Connection, queue_url: str, video_ids: set[str]) -> None:
-    """Replace the stored queue state with the current snapshot."""
-    conn.execute("DELETE FROM queue_state WHERE queue_url = ?", (queue_url,))
-    conn.executemany(
-        "INSERT INTO queue_state (queue_url, video_id) VALUES (?, ?)",
-        [(queue_url, vid) for vid in video_ids],
-    )
+    conn.execute("DROP TABLE IF EXISTS queue_state;")
     conn.commit()
 
 
