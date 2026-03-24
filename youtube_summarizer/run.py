@@ -34,7 +34,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from youtube_summarizer import db
-from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped, get_queue_state, save_queue_state
+from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped
 from youtube_summarizer.config import (
     load_channels,
     load_process_prompts,
@@ -179,35 +179,10 @@ def run_once(limit: int = 10) -> int:
                 "transcribe_queue": "Transcribe Queue",
             }.get(ch.source_type, ch.source_type)
 
-            # For queue sources: track membership between polls so re-added
-            # videos (removed then re-added by the user) get reprocessed.
-            is_queue = ch.source_type == "summarize_queue"
-            prev_queue_ids: set[str] = set()
-            if is_queue:
-                prev_queue_ids = get_queue_state(conn, ch.url)
-                current_queue_ids = {v.video_id for v in videos}
-                # Only persist state when we got a non-empty result — a transient
-                # empty fetch must not wipe the previous state, which would cause
-                # all already-processed videos to be treated as new on the next run.
-                if current_queue_ids:
-                    save_queue_state(conn, ch.url, current_queue_ids)
-                log.debug("Queue state: %d prev, %d current", len(prev_queue_ids), len(current_queue_ids))
-
             for v in videos:
                 if remaining <= 0:
                     break
-                if is_queue:
-                    was_in_queue_before = v.video_id in prev_queue_ids
-                    # Skip if already processed, UNLESS the video was explicitly
-                    # re-added to the queue (absent from a valid non-empty previous
-                    # state).  An empty prev_queue_ids is treated as unreliable
-                    # (e.g. first run or wiped by a failed fetch) so it does NOT
-                    # count as evidence that the video was re-added.
-                    explicitly_readded = not was_in_queue_before and bool(prev_queue_ids)
-                    if db.has_seen(conn, v.video_id) and not explicitly_readded:
-                        log.debug("  skip (queue, already processed): %s", v.title)
-                        continue
-                elif db.has_seen(conn, v.video_id):
+                if db.has_seen(conn, v.video_id):
                     log.debug("  skip (already seen): %s", v.title)
                     continue
 

@@ -7,6 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.6] — 2026-03-24
+
+### Fixed
+- Removed `explicitly_readded` queue logic that was causing the same queue videos to be re-processed (and re-emailed) night after night. The YouTube playlist RSS feed returns different subsets of the playlist at different times (15-item window shifts), which made previously-seen videos appear as "re-added" and bypass the `has_seen` guard. Fix: `has_seen` now applies uniformly to all sources — queue or subscription — with no exceptions.
+
+---
+
 ## [2.0.5] — 2026-03-23
 
 ### Fixed
@@ -160,6 +167,7 @@ First public release.
 ---
 
 <!-- Links -->
+[2.0.6]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.2...v2.0.3
