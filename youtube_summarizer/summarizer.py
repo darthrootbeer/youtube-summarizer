@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import re
+
+
+def _ollama_env() -> dict[str, str]:
+    """Ensure /opt/homebrew/bin is on PATH so ollama is found regardless of how the process was launched."""
+    env = dict(os.environ)
+    brew_bin = "/opt/homebrew/bin"
+    path = env.get("PATH", "")
+    if brew_bin not in path.split(os.pathsep):
+        env["PATH"] = f"{brew_bin}{os.pathsep}{path}" if path else brew_bin
+    return env
 
 
 def summarize_with_ollama(
@@ -25,6 +36,7 @@ def summarize_with_ollama(
         text=True,
         check=True,
         timeout=300,
+        env=_ollama_env(),
     )
     return cleanup_summary((res.stdout or "").strip())
 
