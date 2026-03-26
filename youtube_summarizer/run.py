@@ -602,9 +602,10 @@ def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *,
             )
             if out and out.strip():
                 return out
-            log.warning("LLM call returned empty output — using fallback")
+            log.error("LLM call returned empty output — falling back to raw transcript snippet")
         except Exception as e:
-            log.warning("LLM call failed (%s) — using fallback", e)
+            log.error("LLM call failed (%s) — falling back to raw transcript snippet", e)
+    log.error("FALLBACK ACTIVE: email will contain raw transcript instead of LLM summary")
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
 
 
@@ -661,7 +662,8 @@ def _summarize(transcript: str, ollama_model: str | None, prompt_template: str, 
             if out:
                 return out
         except Exception as e:
-            log.warning("Ollama summarization failed (%s) — using fallback", e)
+            log.error("Ollama summarization failed (%s) — falling back to raw transcript snippet", e)
+    log.error("FALLBACK ACTIVE: email will contain raw transcript instead of LLM summary")
     return summarize_fallback(transcript)
 
 
