@@ -98,7 +98,7 @@ def validate_summary(text: str) -> bool:
     if len(before) < 100:
         return False
     after = s[kt_idx:]
-    bullets = re.findall(r"^[-*\u2022]\s", after, re.MULTILINE)
+    bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
     if len(bullets) < 2:
         return False
     return True

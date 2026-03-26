@@ -235,3 +235,29 @@ def test_deterministic_fallback_summary_has_bullets():
     result = _deterministic_fallback_summary(transcript, 300)
     bullet_count = result.count("\n- ")
     assert bullet_count >= 2
+
+
+def test_validate_summary_accepts_numbered_bullets():
+    from youtube_summarizer.llm import validate_summary
+    text = (
+        "The AI job market has split into two distinct segments. On one side, "
+        "employers are scrambling to fill positions with salaries reaching $400K. "
+        "On the other, many candidates find themselves unable to land roles despite "
+        "strong qualifications. This divide reflects a K-shaped recovery."
+        "\n\nKey Takeaways\n"
+        "1. Employers cannot fill AI roles despite extensive recruiting\n"
+        "2. Specific skills like prompt engineering are highly valued\n"
+        "3. The market rewards hands-on AI experience over credentials"
+    )
+    assert validate_summary(text) is True
+
+
+def test_validate_summary_still_rejects_no_bullets():
+    from youtube_summarizer.llm import validate_summary
+    text = (
+        "Body text that is definitely more than one hundred characters long. "
+        "It has enough prose before the key takeaways heading to pass the length check."
+        "\n\nKey Takeaways\n"
+        "No bullets here, just regular text."
+    )
+    assert validate_summary(text) is False

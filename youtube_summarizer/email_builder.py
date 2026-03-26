@@ -162,12 +162,14 @@ def _render_summary_html(text: str) -> Markup:
             continue
 
         is_bullet = line.startswith("- ") or line.startswith("* ")
-        if is_bullet:
+        numbered_match = re.match(r'^\d+[.)]\s+(.*)', line)
+        if is_bullet or numbered_match:
             flush_paragraph()
             if not in_list:
                 html_parts.append('<ul style="margin:0 0 12px 18px;padding:0;">')
                 in_list = True
-            html_parts.append(f'<li style="margin:0 0 7px 0;">{_apply_inline(line[2:].strip())}</li>')
+            bullet_text = numbered_match.group(1).strip() if numbered_match else line[2:].strip()
+            html_parts.append(f'<li style="margin:0 0 7px 0;">{_apply_inline(bullet_text)}</li>')
             continue
 
         if in_list:
