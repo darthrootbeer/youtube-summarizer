@@ -94,6 +94,24 @@ def _strip_hashtags(title: str) -> str:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+
+def _check_ollama(model: str | None) -> None:
+    """Abort early if Ollama is configured but unreachable."""
+    if not model:
+        return
+    try:
+        res = subprocess.run(
+            ["ollama", "list"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=10, env=_child_env(),
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"ollama list failed: {res.stderr.strip()}")
+    except FileNotFoundError:
+        raise RuntimeError("ollama binary not found — check PATH")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("ollama list timed out — is ollama server running?")
+
 def run_once(limit: int = 10) -> int:
     _load_dotenv_if_present(repo_root() / ".env")
     setup_logging()
@@ -104,6 +122,7 @@ def run_once(limit: int = 10) -> int:
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
+    _check_ollama(settings.ollama_model)
     log.info("run_once: %d source(s) configured, limit=%d, dry_run=%s, ollama=%s",
              len(channels), limit, settings.dry_run, settings.ollama_model or "off")
 
