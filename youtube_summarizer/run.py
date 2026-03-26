@@ -588,22 +588,25 @@ def _build_email_sections(
 # ---------------------------------------------------------------------------
 
 def _run_llm(transcript: str, ollama_model: str | None, prompt_template: str, *, video_context: str | None = None, **extra_vars) -> str:
-    """Run a prompt through Ollama with compacted transcript. Falls back to first 500 chars."""
+    """Run a prompt through Ollama. Retries once on empty/invalid output before falling back to a raw snippet."""
     if ollama_model:
-        try:
-            out = summarize_with_ollama(
-                transcript=transcript,
-                model=ollama_model,
-                prompt_template=prompt_template,
-                compact=True,
-                video_context=video_context,
-                **extra_vars,
-            )
-            if out and out.strip():
-                return out
-            log.error("LLM call returned empty output — falling back to raw transcript snippet")
-        except Exception as e:
-            log.error("LLM call failed (%s) — falling back to raw transcript snippet", e)
+        for attempt in range(2):
+            try:
+                out = summarize_with_ollama(
+                    transcript=transcript,
+                    model=ollama_model,
+                    prompt_template=prompt_template,
+                    compact=True,
+                    video_context=video_context,
+                    **extra_vars,
+                )
+                if out and out.strip():
+                    return out
+                log.warning("LLM call returned empty output (attempt %d/2)", attempt + 1)
+            except Exception as e:
+                log.error("LLM call failed (attempt %d/2): %s", attempt + 1, e)
+                if attempt == 0:
+                    continue
     log.error("FALLBACK ACTIVE: email will contain raw transcript instead of LLM summary")
     return (transcript[:500] + "…").strip() if len(transcript) > 500 else transcript.strip()
 

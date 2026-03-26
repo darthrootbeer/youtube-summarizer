@@ -175,22 +175,33 @@ class TestRunLLM:
         assert result == "Great summary."
         mock_llm.assert_called_once()
 
-    def test_llm_empty_string_falls_back_to_transcript(self):
-        """When LLM returns empty string, should fall back to first 500 chars of transcript."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value=""):
+    def test_llm_empty_string_retries_then_falls_back(self):
+        """When LLM returns empty string both attempts, should fall back to transcript snippet."""
+        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="") as mock_llm:
             result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
+        assert mock_llm.call_count == 2
         assert result == self.TRANSCRIPT.strip()
 
-    def test_llm_whitespace_only_falls_back_to_transcript(self):
-        """When LLM returns only whitespace, should fall back to transcript snippet."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="   "):
+    def test_llm_whitespace_only_retries_then_falls_back(self):
+        """When LLM returns only whitespace both attempts, should fall back to transcript snippet."""
+        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="   ") as mock_llm:
             result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
+        assert mock_llm.call_count == 2
         assert result == self.TRANSCRIPT.strip()
 
-    def test_llm_exception_falls_back_to_transcript(self):
-        """When LLM raises an exception, should fall back to first 500 chars of transcript."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", side_effect=RuntimeError("connection refused")):
+    def test_llm_succeeds_on_retry(self):
+        """When first attempt returns empty but second returns valid text, return the good output."""
+        responses = ["", "Good summary on retry."]
+        with patch("youtube_summarizer.run.summarize_with_ollama", side_effect=responses) as mock_llm:
             result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
+        assert mock_llm.call_count == 2
+        assert result == "Good summary on retry."
+
+    def test_llm_exception_retries_then_falls_back(self):
+        """When LLM raises exceptions on both attempts, should fall back to transcript snippet."""
+        with patch("youtube_summarizer.run.summarize_with_ollama", side_effect=RuntimeError("connection refused")) as mock_llm:
+            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
+        assert mock_llm.call_count == 2
         assert result == self.TRANSCRIPT.strip()
 
     def test_no_ollama_model_falls_back_immediately(self):
