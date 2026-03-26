@@ -116,6 +116,42 @@ def validate_outline(text: str) -> bool:
     return len(items) >= 3
 
 
+
+def _validation_reason(contract_name: str, text: str) -> str:
+    """Return a short human-readable string explaining why validation failed."""
+    s = (text or "").strip()
+    if not s:
+        return "empty output"
+    lower = s.lower()
+    for phrase in _CHATBOT_PHRASES:
+        if phrase in lower:
+            return f"chatbot phrase: {phrase!r}"
+    if contract_name == "opener":
+        if re.search(r"^#{1,3}\s", s, re.MULTILINE):
+            return "contains markdown header"
+        if re.search(r"^\d+[.)]\s", s, re.MULTILINE):
+            return "contains numbered list"
+        if re.search(r"^[-*\u2022]\s", s, re.MULTILINE):
+            return "contains bullet list"
+        if len(s) > 500:
+            return f"too long ({len(s)} chars, max 500)"
+    elif contract_name == "summary":
+        if "key takeaways" not in lower:
+            return "missing Key Takeaways heading"
+        kt_idx = lower.index("key takeaways")
+        before = s[:kt_idx].strip()
+        if len(before) < 100:
+            return f"prose too short before Key Takeaways ({len(before)} chars, min 100)"
+        after = s[kt_idx:]
+        bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
+        if len(bullets) < 2:
+            return f"too few bullets ({len(bullets)}, need 2+)"
+    elif contract_name == "outline":
+        items = re.findall(r"^(?:\d+[.)]\s|[-*\u2022]\s)", s, re.MULTILINE)
+        if len(items) < 3:
+            return f"too few list items ({len(items)}, need 3+)"
+    return "unknown rule"
+
 # ---------------------------------------------------------------------------
 # Tier + transcript compaction
 # ---------------------------------------------------------------------------
@@ -200,9 +236,10 @@ def _call_with_contract(
         if contract.validate(raw):
             log.debug("LLM %s passed validation on attempt %d", contract.name, attempt)
             return (raw, attempt)
+        reason = _validation_reason(contract.name, raw)
         log.warning(
-            "LLM %s failed validation (attempt %d/%d): %.100s",
-            contract.name, attempt, max_retries + 1, raw,
+            "LLM %s failed validation (attempt %d/%d) [%s]: %.120s",
+            contract.name, attempt, max_retries + 1, reason, raw,
         )
         last_output = raw
     raise ContractViolationError(contract.name, last_output)
