@@ -1,485 +1,265 @@
-"""Tests for the youtube-summarizer pipeline.
-
-Focuses on: cleanup_summary chatbot-confusion guard, LLM fallback behavior,
-opener sentence count, HTML formatters, and prompt config loading.
-"""
-from __future__ import annotations
+import os
+import sqlite3
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch, call
 
 import pytest
-from unittest.mock import patch, MagicMock
-
-from youtube_summarizer.summarizer import cleanup_summary
-from youtube_summarizer.run import (
-    _run_llm,
-    _opener_sentence_count,
-    _format_opener_html,
-    _format_summary_html,
-    _format_outline_html,
-)
-from youtube_summarizer.config import _key_from_filename, load_process_prompts
-
-
-# ---------------------------------------------------------------------------
-# 1. cleanup_summary — chatbot confusion guard
-# ---------------------------------------------------------------------------
-
-class TestCleanupSummaryChatbotConfusion:
-    """Tests for the chatbot confusion guard in cleanup_summary."""
-
-    def test_it_looks_like_youve_shared_extensive(self):
-        """'It looks like you've shared an extensive transcript...' should be discarded."""
-        text = "It looks like you've shared an extensive transcript from a tech conference."
-        assert cleanup_summary(text) == ""
-
-    def test_it_looks_like_you_have_shared_long(self):
-        """'It looks like you have shared a long video...' should be discarded."""
-        text = "It looks like you have shared a long video about machine learning."
-        assert cleanup_summary(text) == ""
-
-    def test_it_seems_like_youve_provided_detailed(self):
-        """'It seems like you've provided a detailed transcript...' should be discarded."""
-        text = "It seems like you've provided a detailed transcript from the keynote."
-        assert cleanup_summary(text) == ""
-
-    def test_it_seems_like_you_have_provided_long_transcript(self):
-        """'It seems like you have provided a long transcript about AI tools.' should be discarded."""
-        text = "It seems like you have provided a long transcript about AI tools."
-        assert cleanup_summary(text) == ""
-
-    def test_thank_you_for_sharing(self):
-        """'Thank you for sharing this content.' should be discarded."""
-        text = "Thank you for sharing this content."
-        assert cleanup_summary(text) == ""
-
-    def test_youve_shared_extensive(self):
-        """'You've shared an extensive transcript from a live stream...' should be discarded."""
-        text = "You've shared an extensive transcript from a live stream about AI."
-        assert cleanup_summary(text) == ""
-
-    def test_here_are_some_key_points_from_transcript(self):
-        """'Here are some key points from your transcript...' should be discarded."""
-        text = "Here are some key points from your transcript on productivity."
-        assert cleanup_summary(text) == ""
-
-    def test_here_are_key_highlights_from_video(self):
-        """'Here are highlights from the video content.' should be discarded."""
-        text = "Here are highlights from the video content."
-        assert cleanup_summary(text) == ""
-
-    def test_it_sounds_like_youre_wrapping_up(self):
-        """'It sounds like you're wrapping up a live stream...' should be discarded."""
-        text = "It sounds like you're wrapping up a live stream and providing updates."
-        assert cleanup_summary(text) == ""
-
-    def test_it_sounds_like_youre_describing(self):
-        """'It sounds like you're describing an engaging live stream...' should be discarded."""
-        text = "It sounds like you're describing an engaging and dynamic live stream session."
-        assert cleanup_summary(text) == ""
-
-    def test_it_seems_like_youve_shared_excerpt(self):
-        """'It seems like you've shared an excerpt from a live stream...' should be discarded."""
-        text = "It seems like you've shared an excerpt from a live stream or broadcast."
-        assert cleanup_summary(text) == ""
-
-    def test_feel_free_to_reach_out(self):
-        """'Feel free to reach out...' sign-off should be discarded."""
-        text = "Feel free to reach out for further assistance or if you need help."
-        assert cleanup_summary(text) == ""
-
-    def test_good_opener_single_sentence_passes_through(self):
-        """A normal topic sentence should pass through unchanged."""
-        text = "AI tools are evolving rapidly."
-        result = cleanup_summary(text)
-        assert result == "AI tools are evolving rapidly."
-
-    def test_good_opener_multi_sentence_passes_through(self):
-        """A multi-sentence good opener should pass through unchanged."""
-        text = (
-            "The speaker discusses the future of renewable energy. "
-            "She argues that solar costs will drop below grid parity by 2030."
-        )
-        result = cleanup_summary(text)
-        assert result == text
-
-
-# ---------------------------------------------------------------------------
-# 1b. cleanup_summary — other safety guards
-# ---------------------------------------------------------------------------
-
-class TestCleanupSummaryOtherGuards:
-    """Tests for CJK, markdown header, control token, bracket signoff, section cutoffs."""
-
-    def test_cjk_predominantly_chinese_returns_empty(self):
-        """Predominantly CJK text should be discarded (model responded in wrong language)."""
-        text = "这个视频讨论了人工智能的未来发展趋势，包括机器学习和深度学习的应用场景。"
-        assert cleanup_summary(text) == ""
-
-    def test_markdown_header_stripped(self):
-        """'### Summary\\nContent here' strips the ### marker; header word remains as a line."""
-        text = "### Summary\nContent here"
-        result = cleanup_summary(text)
-        # The regex strips '### ' but keeps the header word — result is 'Summary\nContent here'
-        assert "###" not in result
-        assert "Summary" in result
-        assert "Content here" in result
-
-    def test_control_token_stripped(self):
-        """Text with <|im_end|> should have the token removed."""
-        text = "Great insights on AI.<|im_end|>"
-        result = cleanup_summary(text)
-        assert "<|im_end|>" not in result
-        assert "Great insights on AI." in result
-
-    def test_bracket_signoff_stripped(self):
-        """Text ending with '[End Brief]' should have that stripped."""
-        text = "Key insights here.\n\n[End Brief]"
-        result = cleanup_summary(text)
-        assert "[End Brief]" not in result
-        assert "Key insights here." in result
-
-    def test_key_takeaways_section_kept_with_walkaway(self):
-        """Summary with 'Key takeaways' header + bullets should be kept; walk-away preserved."""
-        text = (
-            "This talk covered LLM deployment strategies.\n\n"
-            "Key takeaways\n\n"
-            "- Use quantized models for edge devices\n"
-            "- Batch inference improves throughput\n\n"
-            "Overall, prioritize latency over accuracy for real-time apps."
-        )
-        result = cleanup_summary(text)
-        assert "Key takeaways" in result
-        assert "quantized models" in result
-        assert "prioritize latency" in result
-
-    def test_key_points_section_dropped(self):
-        """Everything from a standalone 'Key Points' line onward should be dropped."""
-        text = "Good intro content.\n\nKey Points\n\n- Point one\n- Point two"
-        result = cleanup_summary(text)
-        assert "Good intro content." in result
-        assert "Point one" not in result
-
-    def test_conclusion_section_dropped(self):
-        """Everything from a standalone 'Conclusion' line onward should be dropped."""
-        text = "Main content here.\n\nConclusion\n\nFinal thoughts that should be dropped."
-        result = cleanup_summary(text)
-        assert "Main content here." in result
-        assert "Final thoughts" not in result
-
-    def test_empty_string_returns_empty(self):
-        """Empty string input should return empty string."""
-        assert cleanup_summary("") == ""
-
-    def test_none_input_returns_empty(self):
-        """None input should return empty string."""
-        assert cleanup_summary(None) == ""
-
-    def test_whitespace_only_returns_empty(self):
-        """Whitespace-only input should return empty string."""
-        assert cleanup_summary("   \n\n  ") == ""
-
-
-# ---------------------------------------------------------------------------
-# 2. _run_llm — LLM fallback behavior
-# ---------------------------------------------------------------------------
-
-class TestRunLLM:
-    """Tests for _run_llm fallback behavior."""
-
-    TRANSCRIPT = "This is a test transcript about machine learning and neural networks."
-    PROMPT = "Summarize: {transcript}"
-
-    def test_normal_path_returns_llm_output(self):
-        """When LLM returns good text, it should be returned as-is."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="Great summary.") as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
-        assert result == "Great summary."
-        mock_llm.assert_called_once()
-
-    def test_llm_empty_string_retries_then_falls_back(self):
-        """When LLM returns empty string both attempts, should fall back to transcript snippet."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="") as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
-        assert mock_llm.call_count == 2
-        assert result == self.TRANSCRIPT.strip()
-
-    def test_llm_whitespace_only_retries_then_falls_back(self):
-        """When LLM returns only whitespace both attempts, should fall back to transcript snippet."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value="   ") as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
-        assert mock_llm.call_count == 2
-        assert result == self.TRANSCRIPT.strip()
-
-    def test_llm_succeeds_on_retry(self):
-        """When first attempt returns empty but second returns valid text, return the good output."""
-        responses = ["", "Good summary on retry."]
-        with patch("youtube_summarizer.run.summarize_with_ollama", side_effect=responses) as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
-        assert mock_llm.call_count == 2
-        assert result == "Good summary on retry."
-
-    def test_llm_exception_retries_then_falls_back(self):
-        """When LLM raises exceptions on both attempts, should fall back to transcript snippet."""
-        with patch("youtube_summarizer.run.summarize_with_ollama", side_effect=RuntimeError("connection refused")) as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, "llama3", self.PROMPT)
-        assert mock_llm.call_count == 2
-        assert result == self.TRANSCRIPT.strip()
-
-    def test_no_ollama_model_falls_back_immediately(self):
-        """When ollama_model is None, no LLM call should be made; falls back to transcript."""
-        with patch("youtube_summarizer.run.summarize_with_ollama") as mock_llm:
-            result = _run_llm(self.TRANSCRIPT, None, self.PROMPT)
-        mock_llm.assert_not_called()
-        assert result == self.TRANSCRIPT.strip()
-
-    def test_long_transcript_fallback_truncated_to_500(self):
-        """Fallback for a long transcript should be capped at 500 chars with ellipsis."""
-        long_transcript = "word " * 200  # well over 500 chars
-        with patch("youtube_summarizer.run.summarize_with_ollama", return_value=""):
-            result = _run_llm(long_transcript, "llama3", self.PROMPT)
-        assert result.endswith("…")
-        # The result should be no longer than 501 chars (500 + ellipsis)
-        assert len(result) <= 502
-
-
-# ---------------------------------------------------------------------------
-# 3. _opener_sentence_count — duration mapping
-# ---------------------------------------------------------------------------
-
-class TestOpenerSentenceCount:
-    """Tests for _opener_sentence_count duration-to-sentence-count mapping."""
-
-    def test_short_video_under_5min(self):
-        """Videos under 300s (< 5 min) should get 1 opener sentence."""
-        assert _opener_sentence_count(299, 5000) == 1
-
-    def test_short_video_exactly_0(self):
-        """Zero duration should get 1 opener sentence."""
-        assert _opener_sentence_count(0, 5000) == 1
-
-    def test_medium_video_5_to_15_min(self):
-        """Videos 300–899s (5–15 min) should get 2 opener sentences."""
-        assert _opener_sentence_count(300, 10000) == 2
-        assert _opener_sentence_count(899, 10000) == 2
-
-    def test_longer_video_15_to_30_min(self):
-        """Videos 900–1799s (15–30 min) should get 3 opener sentences."""
-        assert _opener_sentence_count(900, 15000) == 3
-        assert _opener_sentence_count(1799, 15000) == 3
-
-    def test_long_video_30_plus_min(self):
-        """Videos ≥ 1800s (30+ min) should get 4 opener sentences."""
-        assert _opener_sentence_count(1800, 20000) == 4
-        assert _opener_sentence_count(3600, 20000) == 4
-
-    def test_none_duration_short_transcript(self):
-        """None duration with short transcript (< 8000 chars) should get 1."""
-        assert _opener_sentence_count(None, 7999) == 1
-
-    def test_none_duration_medium_transcript(self):
-        """None duration with medium transcript (8000–21999 chars) should get 2."""
-        assert _opener_sentence_count(None, 8000) == 2
-        assert _opener_sentence_count(None, 21999) == 2
-
-    def test_none_duration_long_transcript(self):
-        """None duration with long transcript (≥ 22000 chars) should get 3."""
-        assert _opener_sentence_count(None, 22000) == 3
-        assert _opener_sentence_count(None, 50000) == 3
-
-
-# ---------------------------------------------------------------------------
-# 4. _format_opener_html — HTML escaping
-# ---------------------------------------------------------------------------
-
-class TestFormatOpenerHtml:
-    """Tests for _format_opener_html."""
-
-    def test_empty_string_returns_empty_markup(self):
-        """Empty string should return empty Markup."""
-        from markupsafe import Markup
-        result = _format_opener_html("")
-        assert result == Markup("")
-
-    def test_normal_text_returned_escaped(self):
-        """Normal text should be returned as escaped text (no wrapper tags)."""
-        result = _format_opener_html("AI tools are evolving rapidly.")
-        assert str(result) == "AI tools are evolving rapidly."
-
-    def test_html_less_than_escaped(self):
-        """'<' in text should be escaped to '&lt;'."""
-        result = _format_opener_html("Score < 50 is failing.")
-        assert "&lt;" in str(result)
-        assert "<" not in str(result).replace("&lt;", "")
-
-    def test_html_greater_than_escaped(self):
-        """'>' in text should be escaped to '&gt;'."""
-        result = _format_opener_html("Score > 90 is excellent.")
-        assert "&gt;" in str(result)
-
-    def test_html_ampersand_escaped(self):
-        """'&' in text should be escaped to '&amp;'."""
-        result = _format_opener_html("Pros & cons discussed.")
-        assert "&amp;" in str(result)
-
-    def test_whitespace_stripped(self):
-        """Leading/trailing whitespace should be stripped."""
-        result = _format_opener_html("  Hello world.  ")
-        assert str(result) == "Hello world."
-
-
-# ---------------------------------------------------------------------------
-# 5. _format_summary_html — full HTML rendering
-# ---------------------------------------------------------------------------
-
-class TestFormatSummaryHtml:
-    """Tests for _format_summary_html."""
-
-    def test_empty_returns_empty_markup(self):
-        """Empty string should return empty Markup."""
-        from markupsafe import Markup
-        result = _format_summary_html("")
-        assert result == Markup("")
-
-    def test_plain_paragraph_wrapped_in_p_tag(self):
-        """A plain paragraph should be wrapped in a <p> tag."""
-        result = _format_summary_html("This is a plain paragraph.")
-        html = str(result)
-        assert "<p" in html
-        assert "This is a plain paragraph." in html
-
-    def test_bullet_list_wrapped_in_ul_li_tags(self):
-        """Bullet lines should produce <ul><li> structure."""
-        text = "- First point\n- Second point\n- Third point"
-        html = str(_format_summary_html(text))
-        assert "<ul" in html
-        assert "<li" in html
-        assert "First point" in html
-        assert "Second point" in html
-
-    def test_star_bullets_also_wrapped(self):
-        """Star-prefixed bullets should also produce <ul><li> structure."""
-        text = "* Alpha\n* Beta"
-        html = str(_format_summary_html(text))
-        assert "<ul" in html
-        assert "<li" in html
-
-    def test_key_takeaways_renders_as_uppercase_div(self):
-        """'Key takeaways' header line should render as an uppercase styled div."""
-        text = "Key takeaways\n\n- Point one\n- Point two"
-        html = str(_format_summary_html(text))
-        assert "text-transform:uppercase" in html
-        assert "Key takeaways" in html
-
-    def test_bold_markers_converted_to_strong(self):
-        """**bold** markers should be converted to <strong> tags."""
-        text = "This is **very important** content."
-        html = str(_format_summary_html(text))
-        assert "<strong>very important</strong>" in html
-
-    def test_mixed_content_correct_structure(self):
-        """Mixed paragraphs, bullets, key takeaways, and walk-away should produce correct HTML."""
-        text = (
-            "Opening paragraph with context.\n\n"
-            "Key takeaways\n\n"
-            "- Use quantized models\n"
-            "- Batch inference helps\n\n"
-            "Final walk-away sentence."
-        )
-        html = str(_format_summary_html(text))
-        assert "<p" in html           # paragraph rendered
-        assert "<ul" in html          # bullet list rendered
-        assert "text-transform:uppercase" in html   # key takeaways header
-        assert "Opening paragraph" in html
-        assert "quantized models" in html
-        assert "Final walk-away" in html
-
-
-# ---------------------------------------------------------------------------
-# 6. _format_outline_html — ordered list rendering
-# ---------------------------------------------------------------------------
-
-class TestFormatOutlineHtml:
-    """Tests for _format_outline_html."""
-
-    def test_empty_returns_empty_markup(self):
-        """Empty string should return empty Markup."""
-        from markupsafe import Markup
-        result = _format_outline_html("")
-        assert result == Markup("")
-
-    def test_bullet_lines_become_ol_li(self):
-        """Lines with leading dashes should be stripped and wrapped in <ol><li>."""
-        text = "- First topic\n- Second topic\n- Third topic"
-        html = str(_format_outline_html(text))
-        assert "<ol" in html
-        assert "<li" in html
-        assert "First topic" in html
-        assert "Second topic" in html
-        # Dashes should be stripped
-        assert "- First" not in html
-
-    def test_numbered_lines_become_ol_li(self):
-        """Lines with leading numbers should be stripped and wrapped in <ol><li>."""
-        text = "1. Introduction\n2. Main argument\n3. Conclusion"
-        html = str(_format_outline_html(text))
-        assert "<ol" in html
-        assert "<li" in html
-        assert "Introduction" in html
-        # Numbers stripped
-        assert "1." not in html
-
-    def test_plain_lines_become_ol_li(self):
-        """Plain lines with no prefix should also be wrapped in <ol><li>."""
-        text = "Topic one\nTopic two"
-        html = str(_format_outline_html(text))
-        assert "<ol" in html
-        assert "<li" in html
-
-    def test_html_chars_escaped_in_outline(self):
-        """HTML characters in outline items should be escaped."""
-        text = "Score < 50 & > 10"
-        html = str(_format_outline_html(text))
-        assert "&lt;" in html
-        assert "&amp;" in html
-
-
-# ---------------------------------------------------------------------------
-# 7. config — prompt loading
-# ---------------------------------------------------------------------------
-
-class TestConfigPromptLoading:
-    """Tests for _key_from_filename and load_process_prompts."""
-
-    def test_key_from_filename_default(self):
-        """'01_default.md' should yield key 'default'."""
-        assert _key_from_filename("01_default.md") == "default"
-
-    def test_key_from_filename_glossary(self):
-        """'08_glossary.md' should yield key 'glossary'."""
-        assert _key_from_filename("08_glossary.md") == "glossary"
-
-    def test_key_from_filename_no_number_prefix(self):
-        """A filename without a number prefix should still yield correct key."""
-        assert _key_from_filename("summary.md") == "summary"
-
-    def test_key_from_filename_multidigit_prefix(self):
-        """A two-digit prefix like '10_quote_bank.md' should yield 'quote_bank'."""
-        assert _key_from_filename("10_quote_bank.md") == "quote_bank"
-
-    def test_load_process_prompts_returns_list(self):
-        """load_process_prompts() should return a non-empty list of ProcessPrompt."""
-        prompts = load_process_prompts()
-        assert isinstance(prompts, list)
-        assert len(prompts) > 0
-
-    def test_load_process_prompts_has_enabled_prompts(self):
-        """load_process_prompts() should have at least one enabled prompt."""
-        prompts = load_process_prompts()
-        enabled = [p for p in prompts if p.enabled]
-        assert len(enabled) > 0
-
-    def test_glossary_prompt_is_disabled(self):
-        """The glossary prompt should have enabled=False."""
-        prompts = load_process_prompts()
-        glossary = next((p for p in prompts if p.key == "glossary"), None)
-        assert glossary is not None, "glossary prompt not found"
-        assert glossary.enabled is False
+
+from youtube_summarizer import db
+from youtube_summarizer.db import SeenVideo, _migrate, get_bootstrapped_at, set_bootstrapped, has_seen
+from youtube_summarizer.fetcher import VideoMeta
+from youtube_summarizer.llm import LLMOutput, PromptTier
+from youtube_summarizer.pipeline import ProcessedVideo, process_video, run_once
+from youtube_summarizer.transcript import TranscriptResult
+
+
+def _make_video(video_id="vid001", title="Test Video"):
+    return VideoMeta(
+        video_id=video_id,
+        url=f"https://www.youtube.com/watch?v={video_id}",
+        title=title,
+        published_at="2099-01-01T12:00:00Z",
+        channel_name="Test Channel",
+    )
+
+
+def _make_settings(tmp_path):
+    from youtube_summarizer.config import Settings
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir(exist_ok=True)
+    (prompts_dir / "system_preamble.md").write_text("You are an analyst.")
+    (prompts_dir / "opener.md").write_text("Write {sentence_count}.\nTitle: {video_title}\n{transcript_head}")
+    (prompts_dir / "summary_short.md").write_text("Summarize.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "summary_medium.md").write_text("Summarize.\nTitle: {video_title}\nBullets: {bullet_count}\n{transcript}")
+    (prompts_dir / "summary_long.md").write_text("Summarize.\nTitle: {video_title}\nBullets: {bullet_count}\n{transcript}")
+    (prompts_dir / "outline.md").write_text("Outline {outline_points}.\nTitle: {video_title}\n{transcript}")
+    return Settings(
+        email_from="test@test.com",
+        email_to="to@test.com",
+        gmail_app_password="pass",
+        subject_prefix="[T] ",
+        dry_run=False,
+        ytdlp_cookies_from_browser=None,
+        ytdlp_cookies_file=None,
+        ollama_model="test-model",
+        ollama_timeout=60,
+        max_retries=1,
+        data_dir=tmp_path / "data",
+        prompts_dir=prompts_dir,
+        parakeet_model="test-parakeet",
+    )
+
+
+@pytest.fixture
+def pipeline_env(tmp_path):
+    """Set up minimal env for pipeline tests."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "summaries").mkdir()
+
+    channels_dir = tmp_path / "config"
+    channels_dir.mkdir()
+    channels_toml = channels_dir / "channels.toml"
+    channels_toml.write_text("""
+[[subscriptions]]
+name = "Test Channel"
+url = "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx"
+""")
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("YTS_DRY_RUN=1\nYTS_EMAIL_FROM=test@test.com\nYTS_EMAIL_TO=to@test.com\nYTS_GMAIL_APP_PASSWORD=pass\n")
+
+    return tmp_path, data_dir, channels_toml
+
+
+def test_run_once_bootstrap_on_first_run(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    videos = [_make_video("vid001"), _make_video("vid002")]
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com/channel/UCxxx", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=True)
+
+    assert result == 0  # Bootstrap run returns 0
+    conn = db.connect(data_dir)
+    assert get_bootstrapped_at(conn) is not None
+    assert has_seen(conn, "vid001") is True
+    assert has_seen(conn, "vid002") is True
+    conn.close()
+
+
+def test_run_once_skips_seen_videos(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    db.mark_seen(conn, SeenVideo("vid001", "https://example.com", "Ch", "T", "2026-03-20T12:00:00Z"))
+    conn.close()
+
+    videos = [_make_video("vid001")]
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=True)
+
+    assert result == 0  # Already seen, nothing processed
+
+
+def test_run_once_marks_seen_before_processing(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    conn.close()
+
+    videos = [_make_video("vid_new")]
+    mark_seen_calls = []
+    original_mark_seen = db.mark_seen
+
+    def tracking_mark_seen(conn, video):
+        mark_seen_calls.append(video.video_id)
+        return original_mark_seen(conn, video)
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch("youtube_summarizer.pipeline.db.mark_seen", side_effect=tracking_mark_seen), \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=True)
+
+    assert "vid_new" in mark_seen_calls
+
+
+def test_run_once_handles_processing_failure(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    conn.close()
+
+    videos = [_make_video("vid_fail")]
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch("youtube_summarizer.pipeline.process_video", side_effect=RuntimeError("boom")), \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=False)
+
+    # Should not crash, should mark failed
+    conn = db.connect(data_dir)
+    failed = db.get_failed(conn)
+    assert len(failed) == 1
+    assert failed[0]["video_id"] == "vid_fail"
+    conn.close()
+
+
+def test_run_once_respects_limit(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    conn.close()
+
+    videos = [_make_video(f"vid{i:03d}") for i in range(10)]
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=2, dry_run=True)
+
+    assert result == 2
+
+
+def test_run_once_dry_run_no_email(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    conn.close()
+
+    videos = [_make_video("vid_dry")]
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=videos), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch("youtube_summarizer.pipeline.send_gmail_smtp") as mock_send, \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=True)
+
+    mock_send.assert_not_called()
+
+
+def test_process_video_returns_processed_video(tmp_path):
+    settings = _make_settings(tmp_path)
+    (tmp_path / "data" / "summaries").mkdir(parents=True, exist_ok=True)
+    video = _make_video()
+
+    with patch("youtube_summarizer.pipeline.fetch_duration_seconds", return_value=600), \
+         patch("youtube_summarizer.pipeline.get_transcript", return_value=TranscriptResult(text="Test transcript " * 50, source="youtube_api")), \
+         patch("youtube_summarizer.pipeline.generate_opener", return_value=LLMOutput(text="Opener text here.", tier=PromptTier.SHORT, attempts=1, used_fallback=False)), \
+         patch("youtube_summarizer.pipeline.generate_summary", return_value=LLMOutput(text="Summary body.\n\nKey Takeaways\n- One.\n- Two.", tier=PromptTier.SHORT, attempts=1, used_fallback=False)), \
+         patch("youtube_summarizer.pipeline.generate_outline", return_value=None):
+        result = process_video(video, "Test Channel", settings)
+
+    assert isinstance(result, ProcessedVideo)
+    assert result.subject.startswith("[T] ")
+    assert "Test Channel" in result.subject
+
+
+def test_run_once_skips_pre_bootstrap_videos(pipeline_env):
+    tmp_path, data_dir, channels_toml = pipeline_env
+    conn = db.connect(data_dir)
+    set_bootstrapped(conn)
+    conn.close()
+
+    # Video published before bootstrap
+    old_video = VideoMeta(
+        video_id="old_vid",
+        url="https://www.youtube.com/watch?v=old_vid",
+        title="Old Video",
+        published_at="2020-01-01T00:00:00Z",  # Way before bootstrap
+        channel_name="Test Channel",
+    )
+
+    with patch("youtube_summarizer.pipeline.repo_root", return_value=tmp_path), \
+         patch("youtube_summarizer.pipeline._check_ollama", return_value=True), \
+         patch("youtube_summarizer.pipeline.source_url_to_rss", return_value="https://rss.example.com"), \
+         patch("youtube_summarizer.pipeline.fetch_videos_from_rss", return_value=[old_video]), \
+         patch("youtube_summarizer.pipeline.load_channels") as mock_lc, \
+         patch("youtube_summarizer.pipeline.process_video") as mock_process, \
+         patch.dict(os.environ, {"YTS_DRY_RUN": "1", "YTS_DATA_DIR": str(data_dir)}):
+        from youtube_summarizer.config import Channel
+        mock_lc.return_value = [Channel(name="Test", url="https://example.com", mode="summarize", source_type="subscription")]
+        result = run_once(limit=10, dry_run=True)
+
+    # Pre-bootstrap video should be skipped (marked seen but not processed)
+    mock_process.assert_not_called()
+    conn = db.connect(data_dir)
+    assert has_seen(conn, "old_vid") is True
+    conn.close()
