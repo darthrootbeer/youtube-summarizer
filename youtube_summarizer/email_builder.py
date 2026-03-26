@@ -65,6 +65,7 @@ def build_email(
             })
 
     published_at_display = _fmt_published_at(video.published_at)
+    duration_display = _fmt_duration(duration_s)
 
     # Build fallback badge info
     fallback_notes = []
@@ -112,7 +113,7 @@ def build_email(
         sections=sections,
         published_at=video.published_at,
         published_at_display=published_at_display,
-        video_duration_display=None,
+        video_duration_display=duration_display,
         beta_stats=beta_stats,
     )
 
@@ -237,12 +238,23 @@ def _fmt_published_at(published_at: str) -> str | None:
     try:
         from email.utils import parsedate_to_datetime
         dt = parsedate_to_datetime(published_at)
-        return dt.strftime("%b %d, %Y")
+        return dt.strftime("%A %Y-%m-%d")
     except Exception:
         pass
     try:
         from datetime import datetime
         dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y")
+        return dt.strftime("%A %Y-%m-%d")
     except Exception:
         return published_at[:10] if len(published_at) >= 10 else None
+
+
+def _fmt_duration(duration_s: int | None) -> str | None:
+    if not duration_s:
+        return None
+    m = duration_s // 60
+    h = m // 60
+    rem = m % 60
+    if h:
+        return f"[{h}h {rem}m]"
+    return f"[{m}m]"

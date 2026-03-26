@@ -19,11 +19,8 @@
       <!-- Card -->
       <div style="background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(15,18,45,0.12),0 2px 6px rgba(15,18,45,0.06);">
 
-        <!-- Header: deep gradient -->
+        <!-- Header: title only -->
         <div style="background:linear-gradient(140deg,#0d1021 0%,#1b2048 60%,#232d6a 100%);padding:26px 30px 22px;">
-          <div style="font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:12px;font-weight:500;">
-            {{ source_label }}&ensp;&middot;&ensp;{{ source_name }}
-          </div>
           <div style="font-size:23px;font-weight:700;color:#ffffff;line-height:1.28;letter-spacing:-.02em;">
             {{ video_title }}
           </div>
@@ -44,12 +41,12 @@
           <span style="font-size:12.5px;color:#4a4f70;line-height:1.5;">
             <span style="font-weight:600;color:#22253d;">{{ source_name }}</span>
             {% if published_at_display %}
-            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<span>{{ published_at_display }}</span>
+            &ensp;<span style="color:#9096bb;">&bull;</span>&ensp;<span>{{ published_at_display }}</span>
             {% endif %}
             {% if video_duration_display %}
-            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<span>{{ video_duration_display }}</span>
+            &ensp;<span style="color:#9096bb;">&bull;</span>&ensp;<span>{{ video_duration_display }}</span>
             {% endif %}
-            &ensp;<span style="color:#9096bb;">&middot;</span>&ensp;<a href="{{ video_url }}" style="color:#4b6cf6;text-decoration:none;font-weight:500;">Watch&nbsp;video&nbsp;&#8599;</a>
+            &ensp;<span style="color:#9096bb;">&bull;</span>&ensp;<a href="{{ video_url }}" style="color:#4b6cf6;text-decoration:none;font-weight:500;">Watch&nbsp;video&nbsp;&#8599;</a>
           </span>
         </div>
 
