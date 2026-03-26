@@ -66,6 +66,26 @@ class TestCleanupSummaryChatbotConfusion:
         text = "Here are highlights from the video content."
         assert cleanup_summary(text) == ""
 
+    def test_it_sounds_like_youre_wrapping_up(self):
+        """'It sounds like you're wrapping up a live stream...' should be discarded."""
+        text = "It sounds like you're wrapping up a live stream and providing updates."
+        assert cleanup_summary(text) == ""
+
+    def test_it_sounds_like_youre_describing(self):
+        """'It sounds like you're describing an engaging live stream...' should be discarded."""
+        text = "It sounds like you're describing an engaging and dynamic live stream session."
+        assert cleanup_summary(text) == ""
+
+    def test_it_seems_like_youve_shared_excerpt(self):
+        """'It seems like you've shared an excerpt from a live stream...' should be discarded."""
+        text = "It seems like you've shared an excerpt from a live stream or broadcast."
+        assert cleanup_summary(text) == ""
+
+    def test_feel_free_to_reach_out(self):
+        """'Feel free to reach out...' sign-off should be discarded."""
+        text = "Feel free to reach out for further assistance or if you need help."
+        assert cleanup_summary(text) == ""
+
     def test_good_opener_single_sentence_passes_through(self):
         """A normal topic sentence should pass through unchanged."""
         text = "AI tools are evolving rapidly."

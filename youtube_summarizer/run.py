@@ -34,7 +34,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from youtube_summarizer import db
-from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped
+from youtube_summarizer.db import has_bootstrapped, mark_bootstrapped, get_bootstrapped_at
 from youtube_summarizer.config import (
     load_channels,
     load_process_prompts,
@@ -197,12 +197,28 @@ def run_once(limit: int = 10) -> int:
                 "transcribe_queue": "Transcribe Queue",
             }.get(ch.source_type, ch.source_type)
 
+            # Videos published before bootstrap should never be processed — they
+            # weren't in the feed at bootstrap time and only surfaced later as
+            # YouTube rotated the RSS window.
+            bootstrapped_at = get_bootstrapped_at(conn, ch.url)
+
             for v in videos:
                 if remaining <= 0:
                     break
                 if db.has_seen(conn, v.video_id):
                     log.debug("  skip (already seen): %s", v.title)
                     continue
+                if ch.source_type == "subscription" and bootstrapped_at and v.published_at:
+                    if v.published_at < bootstrapped_at:
+                        log.info("  skip (published before bootstrap %s): %s", bootstrapped_at[:10], v.title)
+                        db.mark_seen(conn, db.SeenVideo(
+                            video_id=v.video_id,
+                            video_url=v.url,
+                            channel_name=effective_channel_name,
+                            video_title=_strip_hashtags(v.title),
+                            published_at=v.published_at,
+                        ))
+                        continue
 
                 # Per-video channel name: use RSS entry author for queue sources
                 if ch.source_type in ("summarize_queue", "transcribe_queue") and v.channel_name:

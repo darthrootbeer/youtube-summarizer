@@ -65,6 +65,15 @@ def has_bootstrapped(conn: sqlite3.Connection, channel_url: str) -> bool:
     return row is not None
 
 
+def get_bootstrapped_at(conn: sqlite3.Connection, channel_url: str) -> str | None:
+    """Return the bootstrapped_at ISO timestamp for a channel, or None if not bootstrapped."""
+    row = conn.execute(
+        "SELECT bootstrapped_at FROM bootstrapped_channels WHERE channel_url = ? LIMIT 1",
+        (channel_url,),
+    ).fetchone()
+    return row[0] if row else None
+
+
 def mark_bootstrapped(conn: sqlite3.Connection, channel_url: str) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO bootstrapped_channels (channel_url) VALUES (?)",
