@@ -44,7 +44,6 @@ from youtube_summarizer.config import (
     repo_root,
 )
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
-from youtube_summarizer.glossary import get_skip_terms, save_new_terms
 from youtube_summarizer.summarizer import summarize_fallback, summarize_with_ollama
 from youtube_summarizer.youtube import (
     fetch_channel_title_from_rss,
@@ -466,8 +465,8 @@ def _build_email_sections(
     video_duration_s: float | None = None,
 ) -> tuple[list[dict], list[str], list[str]]:
     """
-    Builds all 5 email sections in fixed order:
-    1. opener, 2. summary, 3. glossary, 4. outline, 5. transcript
+    Builds email sections in fixed order:
+    1. opener, 2. summary, 3. outline, 4. transcript
     Returns (sections, per_prompt_s, enabled_keys).
     """
     sections: list[dict] = []
@@ -479,13 +478,13 @@ def _build_email_sections(
         or "/shorts/" in video_url
     )
     if is_short_video:
-        log.info("  short video (duration=%s, url=%s) — skipping summary, glossary, transcript",
+        log.info("  short video (duration=%s, url=%s) — skipping summary, outline, transcript",
                  f"{video_duration_s:.0f}s" if video_duration_s is not None else "unknown", video_url)
 
     # 1. Opener
     if "opener" in prompt_map:
         p = prompt_map["opener"]
-        log.info("  [1/5] opener ...")
+        log.info("  [1/4] opener ...")
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
         sentence_count = _opener_sentence_count(video_duration_s, len(transcript))
@@ -493,7 +492,7 @@ def _build_email_sections(
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"opener={_fmt_ms(elapsed)}")
         enabled_keys.append("opener")
-        log.info("  [1/5] opener done in %s", _fmt_ms(elapsed))
+        log.info("  [1/4] opener done in %s", _fmt_ms(elapsed))
         sections.append({
             "key": "opener",
             "label": None,
@@ -505,7 +504,7 @@ def _build_email_sections(
     # 2. Summary
     if not is_short_video and "summary" in prompt_map:
         p = prompt_map["summary"]
-        log.info("  [2/5] summary (%s tier) ...", tier["tier"])
+        log.info("  [2/4] summary (%s tier) ...", tier["tier"])
         t0 = time.perf_counter()
         tmpl = p.for_tier(tier["tier"])
         out = _summarize(transcript, ollama_model, tmpl, video_context=video_context)
@@ -513,7 +512,7 @@ def _build_email_sections(
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"summary={_fmt_ms(elapsed)}")
         enabled_keys.append("summary")
-        log.info("  [2/5] summary done in %s", _fmt_ms(elapsed))
+        log.info("  [2/4] summary done in %s", _fmt_ms(elapsed))
         sections.append({
             "key": "summary",
             "label": "Summary",
@@ -522,27 +521,8 @@ def _build_email_sections(
             "html": _format_summary_html(out),
         })
 
-    # 3. Glossary
-    if not is_short_video and "glossary" in prompt_map:
-        p = prompt_map["glossary"]
-        log.info("  [3/5] glossary ...")
-        t0 = time.perf_counter()
-        tmpl = p.for_tier(tier["tier"])
-        glossary_out, new_terms = _run_glossary(transcript, ollama_model, tmpl, root, video_context=video_context)
-        elapsed = _ms_since(t0)
-        per_prompt_s.append(f"glossary={_fmt_ms(elapsed)}")
-        enabled_keys.append("glossary")
-        log.info("  [3/5] glossary done in %s (%d new terms)", _fmt_ms(elapsed), len(new_terms))
-        sections.append({
-            "key": "glossary",
-            "label": "Glossary",
-            "style": "body",
-            "text": glossary_out,
-            "html": _format_glossary_html(glossary_out),
-        })
-
-    # 4. Outline — use creator-provided chapters if available, else LLM
-    log.info("  [4/5] outline ...")
+    # 3. Outline — use creator-provided chapters if available, else LLM
+    log.info("  [3/4] outline ...")
     t0 = time.perf_counter()
     if chapters:
         outline_html = _format_chapters_outline_html(chapters, video_url)
@@ -570,7 +550,7 @@ def _build_email_sections(
         per_prompt_s.append(f"outline=skipped")
 
     enabled_keys.append("outline")
-    log.info("  [4/5] outline done in %s", _fmt_ms(elapsed))
+    log.info("  [3/4] outline done in %s", _fmt_ms(elapsed))
     if outline_html:
         sections.append({
             "key": "outline",
@@ -582,13 +562,13 @@ def _build_email_sections(
 
     # 5. Transcript (skipped for short videos < 3 min)
     if not is_short_video:
-        log.info("  [5/5] transcript cleanup ...")
+        log.info("  [4/4] transcript cleanup ...")
         t0 = time.perf_counter()
         cleaned = _clean_transcript_for_reading(transcript, ollama_model=ollama_model, video_context=video_context)
         elapsed = _ms_since(t0)
         per_prompt_s.append(f"transcript={_fmt_ms(elapsed)}")
         enabled_keys.append("transcript")
-        log.info("  [5/5] transcript done in %s", _fmt_ms(elapsed))
+        log.info("  [4/4] transcript done in %s", _fmt_ms(elapsed))
         sections.append({
             "key": "transcript",
             "label": "Transcript",
@@ -598,7 +578,7 @@ def _build_email_sections(
         })
     else:
         per_prompt_s.append("transcript=skipped(short)")
-        log.info("  [5/5] transcript skipped (short video)")
+        log.info("  [4/4] transcript skipped (short video)")
 
     return sections, per_prompt_s, enabled_keys
 
@@ -685,64 +665,6 @@ def _summarize(transcript: str, ollama_model: str | None, prompt_template: str, 
     log.error("FALLBACK ACTIVE: email will contain raw transcript instead of LLM summary")
     return summarize_fallback(transcript)
 
-
-def _run_glossary(
-    transcript: str,
-    ollama_model: str | None,
-    prompt_template: str,
-    root: Path,
-    *,
-    video_context: str | None = None,
-) -> tuple[str, list[str]]:
-    """Run the glossary prompt with skip-term injection. Returns (output_text, new_term_names)."""
-    skip = get_skip_terms(root)
-    known_terms_str = ", ".join(skip) if skip else "none"
-
-    if not ollama_model:
-        return "No new terms identified.", []
-
-    try:
-        out = summarize_with_ollama(
-            transcript=transcript,
-            model=ollama_model,
-            prompt_template=prompt_template,
-            compact=True,
-            known_terms=known_terms_str,
-            video_context=video_context,
-        )
-    except Exception as e:
-        log.warning("Glossary LLM call failed (%s)", e)
-        return "No new terms identified.", []
-
-    if not out:
-        return "No new terms identified.", []
-
-    _NO_NEW_TERMS_PHRASES = ("no new terms", "no new entries", "no terms identified", "no terms found")
-    if any(phrase in out.lower() for phrase in _NO_NEW_TERMS_PHRASES):
-        return "No new terms identified.", []
-
-    # Hallucination guard: valid glossary must start with a **Term** line.
-    # Preamble prose (even if bold) means the model ignored the format instruction.
-    # Also discard if output is suspiciously long (transcript echo).
-    first_line = next((ln for ln in out.splitlines() if ln.strip()), "")
-    first_line_is_term = bool(re.match(r"^\*\*[^*]+\*\*\s*$", first_line))
-    if not first_line_is_term or len(out) > 4000:
-        log.warning("Glossary output looks invalid (first_line_is_term=%s, len=%d) — discarding", first_line_is_term, len(out))
-        return "No new terms identified.", []
-
-    new_terms = _parse_glossary_terms(out)
-    if new_terms:
-        try:
-            save_new_terms(root, new_terms)
-        except Exception as e:
-            log.warning("Failed to save glossary terms: %s", e)
-
-    return out, new_terms
-
-
-def _parse_glossary_terms(text: str) -> list[str]:
-    """Extract term names from **Term** formatted glossary output."""
-    return re.findall(r"^\*\*(.+?)\*\*", text, re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------
@@ -1105,53 +1027,6 @@ def _format_summary_html(summary: str) -> Markup:
 
     return Markup("\n".join(html_parts))
 
-
-def _format_glossary_html(text: str) -> Markup:
-    s = (text or "").strip()
-    if not s:
-        return Markup('<p style="color:#9096bb;font-style:italic;margin:0;">No new terms identified.</p>')
-
-    if "no new terms" in s.lower():
-        return Markup(f'<p style="color:#9096bb;font-style:italic;margin:0;">{escape(s)}</p>')
-
-    parts: list[str] = []
-    # Split on blank lines between terms
-    blocks = re.split(r"\n\s*\n", s)
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
-        lines = block.splitlines()
-        first = lines[0].strip()
-        rest = " ".join(ln.strip() for ln in lines[1:]).strip()
-
-        # Expected format: **Term** on its own line, definition below
-        term_m = re.match(r"^\*\*(.+?)\*\*$", first)
-        if term_m:
-            term = escape(term_m.group(1))
-            defn = escape(rest) if rest else ""
-            parts.append(
-                f'<p style="margin:0 0 4px 0;"><strong style="color:#1e2138;">{term}</strong></p>'
-                f'<p style="margin:0 0 20px 0;color:#4a4f70;">{defn}</p>'
-            )
-        else:
-            # Fallback: term and definition may be on the same line (e.g. "Term definition...")
-            # Try to split on first sentence boundary after a short term-like prefix
-            inline_m = re.match(r"^\*?([A-Z][^.!?]{1,50}?)\*?\s{2,}(.+)$", block)
-            if not inline_m:
-                # Try "Term: definition" or "Term — definition"
-                inline_m = re.match(r"^([A-Z][^:—\n]{1,50}?)[:\s—–]+(.+)$", block, re.DOTALL)
-            if inline_m:
-                term = escape(inline_m.group(1).strip().strip("*"))
-                defn = escape(inline_m.group(2).strip())
-                parts.append(
-                    f'<p style="margin:0 0 4px 0;"><strong style="color:#1e2138;">{term}</strong></p>'
-                    f'<p style="margin:0 0 20px 0;color:#4a4f70;">{defn}</p>'
-                )
-            else:
-                parts.append(f'<p style="margin:0 0 12px 0;">{escape(block)}</p>')
-
-    return Markup("\n".join(parts))
 
 
 def _format_outline_html(text: str) -> Markup:

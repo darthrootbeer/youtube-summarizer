@@ -57,6 +57,14 @@ _BRACKET_SIGNOFF_RE = re.compile(r"(?im)^\s*\[[^\]]*\]\s*$")
 _OLLAMA_CONTROL_TOKEN_RE = re.compile(r"<\|[^|>]{1,80}\|>")
 # CJK Unified Ideographs + common CJK blocks
 _CJK_RE = re.compile(r"[\u2E80-\u2FFF\u3000-\u303F\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+# Phrases that indicate the model treated the transcript as a chat message instead of summarizing it
+_CHATBOT_CONFUSION_RE = re.compile(
+    r"(?i)^(it looks like (you'?ve?|you have) shared|"
+    r"it seems (like )?(you'?ve?|you have) (shared|provided|given)|"
+    r"thank you for sharing|"
+    r"you'?ve? shared (an? |a )?(?:extensive|long|detailed)|"
+    r"here are (some )?(key points|highlights|takeaways) from (your|the) (transcript|video|content))"
+)
 
 
 def cleanup_summary(text: str) -> str:
@@ -72,6 +80,12 @@ def cleanup_summary(text: str) -> str:
     # Discard output that is predominantly CJK (model responded in Chinese/Japanese/Korean)
     non_ws = re.sub(r"\s", "", s)
     if non_ws and len(_CJK_RE.findall(s)) / len(non_ws) > 0.15:
+        return ""
+
+    # Discard output where the model treated the transcript as a chat message
+    # (e.g. "It looks like you've shared an extensive transcript...")
+    first_sentence = s.split("\n")[0]
+    if _CHATBOT_CONFUSION_RE.match(first_sentence):
         return ""
 
     # Remove markdown heading markers ("### Foo" -> "Foo")

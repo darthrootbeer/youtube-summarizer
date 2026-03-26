@@ -1,6 +1,6 @@
 # glossary
 
-enabled: true
+enabled: false
 label: Glossary
 
 ## short
