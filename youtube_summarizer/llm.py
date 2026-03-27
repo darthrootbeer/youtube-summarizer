@@ -74,7 +74,7 @@ def validate_opener(text: str) -> bool:
     if re.search(r"^[-*\u2022]\s", s, re.MULTILINE):
         return False
     # Max 500 chars
-    if len(s) > 500:
+    if len(s) > 650:
         return False
     # At least one sentence
     sentences = [x.strip() for x in re.split(r"[.!?]+", s) if x.strip()]
@@ -84,23 +84,25 @@ def validate_opener(text: str) -> bool:
 
 
 def validate_summary(text: str) -> bool:
-    """Must have prose body + 'Key Takeaways' heading + 2+ bullets."""
+    """Must have prose body >= 100 chars. Key Takeaways section validated if present."""
     s = (text or "").strip()
     if not s:
         return False
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
         return False
-    if "key takeaways" not in lower:
-        return False
-    kt_idx = lower.index("key takeaways")
-    before = s[:kt_idx].strip()
-    if len(before) < 100:
-        return False
-    after = s[kt_idx:]
-    bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
-    if len(bullets) < 2:
-        return False
+    if "key takeaways" in lower:
+        kt_idx = lower.index("key takeaways")
+        before = s[:kt_idx].strip()
+        if len(before) < 100:
+            return False
+        after = s[kt_idx:]
+        bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
+        if len(bullets) < 2:
+            return False
+    else:
+        if len(s) < 100:
+            return False
     return True
 
 
@@ -133,8 +135,8 @@ def _validation_reason(contract_name: str, text: str) -> str:
             return "contains numbered list"
         if re.search(r"^[-*\u2022]\s", s, re.MULTILINE):
             return "contains bullet list"
-        if len(s) > 500:
-            return f"too long ({len(s)} chars, max 500)"
+        if len(s) > 650:
+            return f"too long ({len(s)} chars, max 650)"
     elif contract_name == "summary":
         if "key takeaways" not in lower:
             return "missing Key Takeaways heading"

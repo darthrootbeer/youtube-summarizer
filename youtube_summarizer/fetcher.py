@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -110,11 +111,16 @@ def _infer_video_id(entry: object, link: str) -> str | None:
 
 def fetch_duration_seconds(video_url: str) -> int | None:
     try:
+        env = dict(os.environ)
+        brew_bin = "/opt/homebrew/bin"
+        if brew_bin not in env.get("PATH", ""):
+            env["PATH"] = f"{brew_bin}:{env.get('PATH', '')}"
         res = subprocess.run(
             ["yt-dlp", "--print", "duration", "--no-download", video_url],
             capture_output=True,
             text=True,
             timeout=30,
+            env=env,
         )
         if res.returncode == 0 and res.stdout.strip():
             return int(float(res.stdout.strip()))
