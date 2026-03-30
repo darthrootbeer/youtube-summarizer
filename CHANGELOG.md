@@ -7,6 +7,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.7] — 2026-03-30
+
+### Changed
+- Prompts rewritten for plain, conversational English — short sentences, everyday words, no jargon
+- Bullet points now explain why an idea matters, not just what it is
+- No markdown characters (`##`, `**`, `*`, `_`) in email output — stripped in both prompts and renderer
+- Short videos (≤3 min) show only the opener block — no summary, bullets, or transcript
+- Email subject format changed to `[YT] {video title}`
+
+---
+
 ## [2.0.6] — 2026-03-24
 
 ### Fixed

@@ -225,6 +225,7 @@ def process_video(
         transcript_source=transcript.source,
         subject_prefix=settings.subject_prefix,
         template_dir=template_dir,
+        duration_s=duration_s,
     )
 
     return ProcessedVideo(

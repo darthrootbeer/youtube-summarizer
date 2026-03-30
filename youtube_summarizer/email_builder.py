@@ -20,9 +20,10 @@ def build_email(
     transcript_source: str,
     subject_prefix: str,
     template_dir: Path,
+    duration_s: int | None = None,
 ) -> tuple[str, str, str]:
     """Returns (subject, html, plaintext)."""
-    subject = f"{subject_prefix}{channel_name}: {video.title}"
+    subject = f"[YT] {video.title}"
 
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
@@ -30,9 +31,9 @@ def build_email(
     )
     template = env.get_template("email.html.j2")
 
+    is_short_video = duration_s is not None and duration_s <= 180
+
     opener_html = _render_opener_html(opener.text)
-    summary_html = _render_summary_html(summary.text)
-    outline_html = _render_outline_html(outline.text) if outline else Markup("")
 
     # Build sections list matching the v1 template structure
     sections = []
@@ -43,21 +44,25 @@ def build_email(
         "text": opener.text,
         "html": opener_html,
     })
-    sections.append({
-        "key": "summary",
-        "label": "Summary",
-        "style": "body",
-        "text": summary.text,
-        "html": summary_html,
-    })
-    if outline and outline.text:
+
+    if not is_short_video:
+        summary_html = _render_summary_html(summary.text)
         sections.append({
-            "key": "outline",
-            "label": "Outline",
+            "key": "summary",
+            "label": "Summary",
             "style": "body",
-            "text": outline.text,
-            "html": outline_html,
+            "text": summary.text,
+            "html": summary_html,
         })
+        if outline and outline.text:
+            outline_html = _render_outline_html(outline.text)
+            sections.append({
+                "key": "outline",
+                "label": "Outline",
+                "style": "body",
+                "text": outline.text,
+                "html": outline_html,
+            })
 
     published_at_display = _fmt_published_at(video.published_at)
 
@@ -73,9 +78,9 @@ def build_email(
         "summary_id": video.video_id,
         "transcript_source": transcript_source,
         "ollama_model": "v2",
-        "enabled_prompts": "opener, summary" + (", outline" if outline else ""),
+        "enabled_prompts": "opener" if is_short_video else ("opener, summary" + (", outline" if outline else "")),
         "prompt_tier": summary.tier.value,
-        "prompt_count": 2 + (1 if outline else 0),
+        "prompt_count": 1 if is_short_video else (2 + (1 if outline else 0)),
         "per_prompt_summarize_s": "n/a",
         "transcript_chars": "n/a",
         "summary_chars": len(summary.text),
@@ -111,20 +116,34 @@ def build_email(
         beta_stats=beta_stats,
     )
 
-    text = _plaintext(opener.text, summary.text, outline.text if outline else None)
+    text = _plaintext(
+        opener.text,
+        summary.text if not is_short_video else None,
+        outline.text if (outline and not is_short_video) else None,
+    )
 
     return (subject, html, text)
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown characters that should never appear in email output."""
+    # Remove ATX headers (## Heading)
+    s = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Remove bold/italic markers
+    s = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", s)
+    s = re.sub(r"_{1,3}(.*?)_{1,3}", r"\1", s)
+    return s
+
+
 def _render_opener_html(text: str) -> Markup:
-    s = (text or "").strip()
+    s = _strip_markdown((text or "").strip())
     if not s:
         return Markup("")
     return Markup(escape(s))
 
 
 def _render_summary_html(text: str) -> Markup:
-    s = (text or "").strip()
+    s = _strip_markdown((text or "").strip())
     if not s:
         return Markup("")
 
@@ -199,13 +218,14 @@ def _render_outline_html(text: str) -> Markup:
 
 
 def _apply_inline(text: str) -> str:
-    """HTML-escape then apply **bold** markers."""
-    escaped = str(escape(text))
-    return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", escaped)
+    """HTML-escape text (markdown already stripped upstream)."""
+    return str(escape(text))
 
 
-def _plaintext(opener: str, summary: str, outline: str | None) -> str:
-    parts = [opener, "", summary]
+def _plaintext(opener: str, summary: str | None, outline: str | None) -> str:
+    parts = [opener]
+    if summary:
+        parts.extend(["", summary])
     if outline:
         parts.extend(["", "---", "", outline])
     return "\n".join(parts)
