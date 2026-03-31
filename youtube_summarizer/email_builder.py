@@ -275,7 +275,7 @@ def _fmt_published_at(published_at: str) -> str | None:
 def _fmt_duration(duration_s: int | None) -> str | None:
     if not duration_s:
         return None
-    m = duration_s // 60
+    m = max(1, -(-duration_s // 60))  # ceiling division, minimum 1m
     h = m // 60
     rem = m % 60
     if h:

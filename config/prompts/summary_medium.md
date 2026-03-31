@@ -12,7 +12,7 @@ Key Takeaways
 - [one short sentence — written like you're telling a friend, plain words, no jargon, no passive voice]
 ...
 
-The heading "Key Takeaways" must appear exactly as shown. Each bullet starts with "- ". No markdown characters (no ##, no **, no *, no _). Stop after the last bullet. No other text.
+The heading "Key Takeaways" must appear exactly as shown. The very next line after it must be the first bullet. No text between the heading and the bullets. Each bullet starts with "- ". No markdown characters (no ##, no **, no *, no _). Stop after the last bullet. No other text.
 
 Video title: {video_title}
 
