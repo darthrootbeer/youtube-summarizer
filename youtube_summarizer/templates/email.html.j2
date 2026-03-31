@@ -87,35 +87,9 @@
           {% endfor %}
 
           <!-- Debug stats -->
-          {% if beta_stats %}
-          <div style="margin-top:16px;padding-top:20px;border-top:1px solid #e8eaf4;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#a0a6c8;margin-bottom:10px;">Debug stats</div>
-            <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;color:#7178a0;white-space:pre-wrap;line-height:1.55;">summary_id: {{ beta_stats.summary_id }}
-video_id: {{ beta_stats.video_id }}
-transcript_source: {{ beta_stats.transcript_source }}
-enabled_prompts: {{ beta_stats.enabled_prompts or "n/a" }}
-prompt_tier: {{ beta_stats.prompt_tier or "n/a" }}
-prompt_count: {{ beta_stats.prompt_count or "n/a" }}
-per_prompt_summarize_s: {{ beta_stats.per_prompt_summarize_s or "n/a" }}
-transcript_chars: {{ beta_stats.transcript_chars or "n/a" }}
-summary_chars: {{ beta_stats.summary_chars or "n/a" }}
-mode: {{ beta_stats.mode or "n/a" }}
-ollama_model: {{ beta_stats.ollama_model or "n/a" }}
-rss_fetch_s: {{ beta_stats.rss_fetch_s or "n/a" }}
-media_size_mb: {{ beta_stats.media_size_mb or "n/a" }}
-download_media_s: {{ beta_stats.download_media_s or "n/a" }}
-video_duration_s: {{ beta_stats.video_duration_s | round(1) if beta_stats.video_duration_s else "n/a" }}
-transcribe_s: {{ beta_stats.transcribe_s or "n/a" }}
-summarize_s: {{ beta_stats.summarize_s or "n/a" }}
-avg_cpu_pct: {{ beta_stats.avg_cpu_pct or "n/a" }}
-has_description: {{ beta_stats.has_description }}
-chapters_count: {{ beta_stats.chapters_count }}
-email_render_s: {{ beta_stats.email_render_s or "n/a" }}
-email_send_s: {{ beta_stats.email_send_s or "n/a" }}
-total_before_send_s: {{ beta_stats.total_before_send_s or "n/a" }}
-total_to_send_s: {{ beta_stats.total_to_send_s or "n/a" }}
-total_processing_s: {{ beta_stats.total_processing_s or "n/a" }}
-qa_notes: {{ beta_stats.qa_notes or "" }}</div>
+          {% if meta %}
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e8eaf4;">
+            <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;color:#a0a6c8;line-height:1.5;">{{ meta.summary_id }} &bull; v{{ meta.version }} &bull; {{ meta.generated_at }}</div>
           </div>
           {% endif %}
 

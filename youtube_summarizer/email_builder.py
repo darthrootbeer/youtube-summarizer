@@ -78,40 +78,13 @@ def build_email(
     published_at_display = _fmt_published_at(video.published_at)
     duration_display = _fmt_duration(duration_s)
 
-    # Build fallback badge info
-    fallback_notes = []
-    if opener.used_fallback:
-        fallback_notes.append("opener")
-    if summary.used_fallback:
-        fallback_notes.append("summary")
+    from datetime import datetime, timezone
+    from youtube_summarizer import __version__
 
-    beta_stats = {
-        "video_id": video.video_id,
+    meta = {
         "summary_id": summary_id or video.video_id,
-        "transcript_source": transcript_source,
-        "ollama_model": "v2",
-        "enabled_prompts": "opener" if is_short_video else ("opener, summary" + (", outline" if outline else "")),
-        "prompt_tier": summary.tier.value,
-        "prompt_count": 1 if is_short_video else (2 + (1 if outline else 0)),
-        "per_prompt_summarize_s": "n/a",
-        "transcript_chars": "n/a",
-        "summary_chars": len(summary.text),
-        "mode": "summarize",
-        "rss_fetch_s": "n/a",
-        "media_size_mb": "n/a",
-        "download_media_s": "n/a",
-        "video_duration_s": None,
-        "transcribe_s": "n/a",
-        "summarize_s": "n/a",
-        "avg_cpu_pct": "n/a",
-        "has_description": False,
-        "chapters_count": 0,
-        "email_render_s": "n/a",
-        "email_send_s": "n/a",
-        "total_before_send_s": "n/a",
-        "total_to_send_s": "n/a",
-        "total_processing_s": "n/a",
-        "qa_notes": "; ".join(f"fallback: {n}" for n in fallback_notes) if fallback_notes else "",
+        "version": __version__,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y%m%d.%H%M%S"),
     }
 
     html = template.render(
@@ -125,7 +98,7 @@ def build_email(
         published_at=video.published_at,
         published_at_display=published_at_display,
         video_duration_display=duration_display,
-        beta_stats=beta_stats,
+        meta=meta,
     )
 
     text = _plaintext(
