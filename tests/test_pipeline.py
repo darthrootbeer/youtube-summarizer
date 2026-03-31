@@ -30,10 +30,11 @@ def _make_settings(tmp_path):
     prompts_dir.mkdir(exist_ok=True)
     (prompts_dir / "system_preamble.md").write_text("You are an analyst.")
     (prompts_dir / "opener.md").write_text("Write {sentence_count}.\nTitle: {video_title}\n{transcript_head}")
-    (prompts_dir / "summary_short.md").write_text("Summarize.\nTitle: {video_title}\n{transcript}")
-    (prompts_dir / "summary_medium.md").write_text("Summarize.\nTitle: {video_title}\nBullets: {bullet_count}\n{transcript}")
-    (prompts_dir / "summary_long.md").write_text("Summarize.\nTitle: {video_title}\nBullets: {bullet_count}\n{transcript}")
-    (prompts_dir / "outline.md").write_text("Outline {outline_points}.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "summary_short.md").write_text("Summarize {para_count}.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "summary_medium.md").write_text("Summarize {para_count}.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "summary_long.md").write_text("Summarize {para_count}.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "summary_bullets.md").write_text("Bullets {bullet_count}.\nTitle: {video_title}\n{transcript}")
+    (prompts_dir / "outline.md").write_text("Outline.\nTitle: {video_title}\n{transcript}")
     return Settings(
         email_from="test@test.com",
         email_to="to@test.com",
