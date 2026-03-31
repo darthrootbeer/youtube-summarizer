@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from html import escape
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
@@ -84,7 +85,7 @@ def build_email(
     meta = {
         "summary_id": summary_id or video.video_id,
         "version": __version__,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y%m%d.%H%M%S"),
+        "generated_at": datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d.%H%M%S"),
     }
 
     html = template.render(
