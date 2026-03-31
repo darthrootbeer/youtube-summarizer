@@ -1,0 +1,9 @@
+#!/bin/zsh
+# yts — run youtube-summarizer using the project venv
+# Usage: ./yts <command> [args]
+#   ./yts run
+#   ./yts force <video_id>
+#   ./yts watch
+set -e
+REPO="$(cd "$(dirname "$0")" && pwd)"
+exec "$REPO/.venv/bin/python" -m youtube_summarizer "$@"
