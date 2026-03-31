@@ -72,7 +72,7 @@ pip install -r requirements.txt
 
 Select **Settings** to enter your email credentials, then **Subscribe** to add your first channel.
 
-For a detailed walkthrough, see `SETUP.md`.
+For a detailed walkthrough, see [`docs/SETUP.md`](docs/SETUP.md).
 
 ---
 
@@ -189,7 +189,7 @@ Workaround: set `YTS_YTDLP_COOKIES_FROM_BROWSER=chrome` in `.env`. Monitoring fo
 
 ## Docs
 
-- `SETUP.md` — step-by-step first-time setup
-- `ARCHITECTURE.md` — how everything fits together
-- `config/prompts/README.md` — how to write custom prompts
-- `UNINSTALL.md` — how to remove the app
+- [`docs/SETUP.md`](docs/SETUP.md) — step-by-step first-time setup
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how everything fits together
+- [`config/prompts/README.md`](config/prompts/README.md) — how to write custom prompts
+- [`docs/UNINSTALL.md`](docs/UNINSTALL.md) — how to remove the app
