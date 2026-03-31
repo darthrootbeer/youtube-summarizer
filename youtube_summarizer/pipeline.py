@@ -9,7 +9,7 @@ from pathlib import Path
 import requests
 
 from youtube_summarizer import db
-from youtube_summarizer.artifacts import write_artifact
+from youtube_summarizer.artifacts import make_summary_id, write_artifact
 from youtube_summarizer.config import Settings, load_channels, load_dotenv, load_settings, repo_root
 from youtube_summarizer.email_builder import build_email
 from youtube_summarizer.emailer import EmailContent, send_gmail_smtp
@@ -31,6 +31,7 @@ class ProcessedVideo:
     email_html: str
     email_text: str
     subject: str
+    summary_id: str
 
 
 def _setup_logging(debug: bool = False) -> None:
@@ -156,6 +157,7 @@ def run_once(limit: int = 10, dry_run: bool = False, debug: bool = False) -> int
                 # Write artifact
                 write_artifact(
                     video_id=v.video_id,
+                    summary_id=result.summary_id,
                     channel_name=channel_name,
                     video_title=v.title,
                     video_url=v.url,
@@ -215,6 +217,8 @@ def process_video(
         transcript.text, video.title, None, video.url, duration_s, **llm_kwargs,
     )
 
+    summary_id = make_summary_id(video.video_id)
+
     template_dir = Path(__file__).resolve().parent / "templates"
     subject, html, text = build_email(
         channel_name=channel_name,
@@ -226,6 +230,7 @@ def process_video(
         subject_prefix=settings.subject_prefix,
         template_dir=template_dir,
         duration_s=duration_s,
+        summary_id=summary_id,
     )
 
     return ProcessedVideo(
@@ -238,6 +243,7 @@ def process_video(
         email_html=html,
         email_text=text,
         subject=subject,
+        summary_id=summary_id,
     )
 
 
@@ -295,6 +301,7 @@ def force_process_video(video_id: str, *, dry_run: bool = False, debug: bool = F
 
     write_artifact(
         video_id=video_id,
+        summary_id=result.summary_id,
         channel_name=channel_name,
         video_title=title,
         video_url=video_url,

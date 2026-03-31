@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
 
+def make_summary_id(video_id: str) -> str:
+    """Return a unique summary ID: {video_id}-{5 random hex chars}."""
+    return f"{video_id}-{secrets.token_hex(3)}"
+
+
 def write_artifact(
     video_id: str,
+    summary_id: str,
     channel_name: str,
     video_title: str,
     video_url: str,
@@ -15,12 +22,13 @@ def write_artifact(
     transcript_source: str,
     data_dir: Path,
 ) -> Path:
-    """Write a debug .txt file to data/summaries/{video_id}.txt. Overwrites if exists."""
+    """Write a debug .txt file to data/summaries/{summary_id}.txt."""
     out_dir = data_dir / "summaries"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{video_id}.txt"
+    out_path = out_dir / f"{summary_id}.txt"
     now = datetime.now(timezone.utc).isoformat()
     content = (
+        f"summary_id: {summary_id}\n"
         f"video_id: {video_id}\n"
         f"channel: {channel_name}\n"
         f"title: {video_title}\n"

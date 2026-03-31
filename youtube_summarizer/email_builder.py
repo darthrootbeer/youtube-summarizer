@@ -21,6 +21,7 @@ def build_email(
     subject_prefix: str,
     template_dir: Path,
     duration_s: int | None = None,
+    summary_id: str | None = None,
 ) -> tuple[str, str, str]:
     """Returns (subject, html, plaintext)."""
     subject = f"[YT] {video.title}"
@@ -86,7 +87,7 @@ def build_email(
 
     beta_stats = {
         "video_id": video.video_id,
-        "summary_id": video.video_id,
+        "summary_id": summary_id or video.video_id,
         "transcript_source": transcript_source,
         "ollama_model": "v2",
         "enabled_prompts": "opener" if is_short_video else ("opener, summary" + (", outline" if outline else "")),
