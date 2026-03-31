@@ -83,6 +83,41 @@ def validate_opener(text: str) -> bool:
     return True
 
 
+def validate_prose(text: str) -> bool:
+    """Plain prose >= 100 chars, no bullets, no headers, no chatbot phrases."""
+    s = (text or "").strip()
+    if not s or len(s) < 100:
+        return False
+    lower = s.lower()
+    if any(phrase in lower for phrase in _CHATBOT_PHRASES):
+        return False
+    if re.search(r"^#{1,3}\s", s, re.MULTILINE):
+        return False
+    if re.search(r"^[-*\u2022]\s", s, re.MULTILINE):
+        return False
+    if re.search(r"^\d+[.)]\s", s, re.MULTILINE):
+        return False
+    return True
+
+
+def validate_bullets(text: str, min_count: int = 2) -> bool:
+    """All lines are '- ' bullets, no other text, at least min_count."""
+    s = (text or "").strip()
+    if not s:
+        return False
+    lower = s.lower()
+    if any(phrase in lower for phrase in _CHATBOT_PHRASES):
+        return False
+    lines = [l.strip() for l in s.splitlines() if l.strip()]
+    if not lines:
+        return False
+    bullets = [l for l in lines if re.match(r"^[-\u2022]\s", l)]
+    # Every non-empty line must be a bullet
+    if len(bullets) != len(lines):
+        return False
+    return len(bullets) >= min_count
+
+
 def validate_summary(text: str) -> bool:
     """Prose body >= 100 chars, then Key Takeaways heading, then bullets immediately."""
     s = (text or "").strip()
@@ -168,6 +203,23 @@ def _validation_reason(contract_name: str, text: str) -> str:
         bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
         if len(bullets) < 2:
             return f"too few bullets ({len(bullets)}, need 2+)"
+    elif contract_name == "summary_prose":
+        if len(s) < 100:
+            return f"prose too short ({len(s)} chars, min 100)"
+        if re.search(r"^#{1,3}\s", s, re.MULTILINE):
+            return "contains markdown header"
+        if re.search(r"^[-*\u2022]\s", s, re.MULTILINE):
+            return "contains bullets"
+        if re.search(r"^\d+[.)]\s", s, re.MULTILINE):
+            return "contains numbered list"
+    elif contract_name == "summary_bullets":
+        lines = [l.strip() for l in s.splitlines() if l.strip()]
+        bullets = [l for l in lines if re.match(r"^[-\u2022]\s", l)]
+        non_bullets = [l for l in lines if not re.match(r"^[-\u2022]\s", l)]
+        if non_bullets:
+            return f"non-bullet line(s): {non_bullets[0]!r:.80}"
+        if len(bullets) < 2:
+            return f"too few bullets ({len(bullets)}, need 2+)"
     elif contract_name == "outline":
         items = re.findall(r"^(?:\d+[.)]\s|[-*\u2022]\s)", s, re.MULTILINE)
         if len(items) < 3:
@@ -228,7 +280,7 @@ def _call_ollama(prompt: str, model: str, timeout: int) -> str:
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 2048},
+            "options": {"temperature": 0.3, "num_predict": 3072},
         },
         timeout=timeout,
     )
@@ -386,31 +438,95 @@ def generate_summary(
     counts = _adaptive_counts(duration_s)
     compacted = _compact_transcript(transcript, tier)
     preamble = _load_preamble(prompts_dir)
-    prompt_file = {
+
+    # Two focused calls: prose first, bullets second
+    prose_file = {
         PromptTier.SHORT: "summary_short.md",
         PromptTier.MEDIUM: "summary_medium.md",
         PromptTier.LONG: "summary_long.md",
     }[tier]
-    template = _load_prompt(prompts_dir, prompt_file)
-    prompt = _build_prompt(
-        preamble, template,
+
+    total_attempts = 0
+    used_fallback = False
+
+    # --- Call 1: prose ---
+    prose_text = ""
+    if counts["para_count"] > 0:
+        prose_template = _load_prompt(prompts_dir, prose_file)
+        prose_prompt = _build_prompt(
+            preamble, prose_template,
+            video_title=video_title,
+            transcript=compacted,
+            para_count=counts["para_count"],
+        )
+        prose_contract = OutputContract(
+            name="summary_prose",
+            validate=validate_prose,
+        )
+        try:
+            prose_text, attempts = _call_with_contract(
+                prose_prompt, prose_contract, model, timeout, max_retries
+            )
+            total_attempts += attempts
+        except ContractViolationError:
+            log.warning("Prose contract exhausted — using sentence fallback")
+            sentences = _split_sentences(transcript)
+            count = counts["para_count"] * 2
+            prose_text = " ".join(sentences[:count]) if sentences else transcript[:400]
+            total_attempts += max_retries + 1
+            used_fallback = True
+
+    # --- Call 2: bullets ---
+    bullets_template = _load_prompt(prompts_dir, "summary_bullets.md")
+    bullets_prompt = _build_prompt(
+        preamble, bullets_template,
         video_title=video_title,
         transcript=compacted,
         bullet_count=counts["bullet_count"],
-        para_count=counts["para_count"],
     )
-    contract = OutputContract(name="summary", validate=validate_summary)
+    bullets_contract = OutputContract(
+        name="summary_bullets",
+        validate=lambda t: validate_bullets(t, min_count=2),
+    )
+    bullets_text = ""
     try:
-        text, attempts = _call_with_contract(prompt, contract, model, timeout, max_retries)
-        return LLMOutput(text=text, tier=tier, attempts=attempts, used_fallback=False)
-    except ContractViolationError:
-        log.error("Summary contract exhausted -- using deterministic fallback")
-        return LLMOutput(
-            text=_deterministic_fallback_summary(transcript, duration_s),
-            tier=tier,
-            attempts=max_retries + 1,
-            used_fallback=True,
+        bullets_text, attempts = _call_with_contract(
+            bullets_prompt, bullets_contract, model, timeout, max_retries
         )
+        total_attempts += attempts
+    except ContractViolationError:
+        log.warning("Bullets contract exhausted — using sentence fallback")
+        sentences = _split_sentences(transcript)
+        offset = counts["para_count"] * 2
+        takeaway_sentences = sentences[offset:offset + counts["bullet_count"]] or sentences[:3]
+        bullets_text = "\n".join(f"- {s}" for s in takeaway_sentences)
+        total_attempts += max_retries + 1
+        used_fallback = True
+
+    # Assemble: prose + Key Takeaways heading + bullets
+    if prose_text:
+        assembled = f"{prose_text}\n\nKey Takeaways\n{bullets_text}"
+    else:
+        # Short video (para_count == 0): bullets only under heading
+        assembled = f"Key Takeaways\n{bullets_text}"
+
+    # Final validation of assembled output
+    if validate_summary(assembled) or (counts["para_count"] == 0 and bullets_text):
+        return LLMOutput(
+            text=assembled,
+            tier=tier,
+            attempts=total_attempts,
+            used_fallback=used_fallback,
+        )
+
+    # Last resort: full deterministic fallback
+    log.error("Assembled summary failed final validation — using deterministic fallback")
+    return LLMOutput(
+        text=_deterministic_fallback_summary(transcript, duration_s),
+        tier=tier,
+        attempts=total_attempts,
+        used_fallback=True,
+    )
 
 
 def generate_outline(

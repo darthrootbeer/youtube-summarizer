@@ -205,6 +205,7 @@ def test_generate_summary_uses_fallback_on_exhaustion(tmp_path):
     prompts_dir.mkdir()
     (prompts_dir / "system_preamble.md").write_text("You are an analyst.")
     (prompts_dir / "summary_short.md").write_text("Summarize.\n\nVideo title: {video_title}\n\nTranscript:\n\"\"\"\n{transcript}\n\"\"\"")
+    (prompts_dir / "summary_bullets.md").write_text("Bullets.\n\nVideo title: {video_title}\n\nTranscript:\n\"\"\"\n{transcript}\n\"\"\"")
 
     transcript = "Short transcript about testing."
     with patch("youtube_summarizer.llm._call_ollama", return_value="It looks like you've shared something."):
