@@ -1,4 +1,4 @@
-Output ONLY {bullet_count} bullet points. Begin your response with the first bullet.
+Output ONLY {bullet_count} bullet points in English. Begin your response with the first bullet. Do not use any language other than English.
 
 Each bullet must be exactly one short sentence — plain words, no jargon, no passive voice, written like you're telling a friend.
 Each bullet starts with "- " (dash space). No other formatting. No markdown (no **, no *, no _, no ##).
