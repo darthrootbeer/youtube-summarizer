@@ -84,40 +84,44 @@ def validate_opener(text: str) -> bool:
 
 
 def validate_summary(text: str) -> bool:
-    """Must have prose body >= 100 chars. Key Takeaways section validated if present."""
+    """Prose body >= 100 chars, then Key Takeaways heading, then bullets immediately."""
     s = (text or "").strip()
     if not s:
         return False
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
         return False
-    # Reject rogue section headers (model inventing its own sections)
+    # Reject rogue section headers
     if re.search(r"^===\s*.+\s*===", s, re.MULTILINE):
         return False
-    if "key takeaways" in lower:
-        kt_idx = lower.index("key takeaways")
-        before = s[:kt_idx].strip()
-        if len(before) < 100:
-            return False
-        after = s[kt_idx:]
-        bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
-        if len(bullets) < 2:
-            return False
-        # Reject preamble text between heading and first bullet
-        lines_after_heading = after.splitlines()[1:]  # skip the "Key Takeaways" line itself
-        for line in lines_after_heading:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if re.match(r"^(?:[-*\u2022]|\d+[.)])\s", stripped):
-                break  # first bullet found immediately — good
-            return False  # non-empty, non-bullet line before first bullet
-    else:
-        # No Key Takeaways heading — accept prose-only if long enough and clean
-        if len(s) < 100:
-            return False
-        # Reject if model produced section headers but named them something other than Key Takeaways
-        if re.search(r"^(?:#+\s|\*{2})", s, re.MULTILINE):
+    # Key Takeaways is required — no prose-only fallback
+    if "key takeaways" not in lower:
+        return False
+    kt_idx = lower.index("key takeaways")
+    before = s[:kt_idx].strip()
+    if len(before) < 100:
+        return False
+    after = s[kt_idx:]
+    bullets = re.findall(r"^[-*\u2022]\s", after, re.MULTILINE)
+    if len(bullets) < 2:
+        return False
+    # Reject any text between heading and first bullet
+    for line in after.splitlines()[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^[-*\u2022]\s", stripped):
+            break
+        return False
+    # Reject text after the last bullet (intros, outros, sign-offs)
+    lines = after.splitlines()
+    past_bullets = False
+    for line in lines[1:]:
+        stripped = line.strip()
+        if re.match(r"^[-*\u2022]\s", stripped):
+            past_bullets = True
+            continue
+        if past_bullets and stripped:
             return False
     return True
 
@@ -199,13 +203,15 @@ def _compact_transcript(text: str, tier: PromptTier) -> str:
 
 def _adaptive_counts(duration_s: int | None) -> dict:
     dur = duration_s or 600
-    if dur < 300:
-        return {"sentence_count": 2, "bullet_count": 3, "outline_points": 3}
-    if dur < 900:
-        return {"sentence_count": 2, "bullet_count": 3, "outline_points": 4}
-    if dur < 1800:
-        return {"sentence_count": 3, "bullet_count": 4, "outline_points": 5}
-    return {"sentence_count": 4, "bullet_count": 5, "outline_points": 7}
+    if dur < 180:      # <=3 min: opener + 3 bullets only
+        return {"sentence_count": 2, "bullet_count": 3, "para_count": 0}
+    if dur < 600:      # 3-10 min: 2 paragraphs, 3 bullets
+        return {"sentence_count": 2, "bullet_count": 3, "para_count": 2}
+    if dur < 1200:     # 10-20 min: 3 paragraphs, 4 bullets
+        return {"sentence_count": 3, "bullet_count": 4, "para_count": 3}
+    if dur < 2700:     # 20-45 min: 4 paragraphs, 5 bullets
+        return {"sentence_count": 3, "bullet_count": 5, "para_count": 4}
+    return {"sentence_count": 4, "bullet_count": 6, "para_count": 5}  # 45 min+
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +397,7 @@ def generate_summary(
         video_title=video_title,
         transcript=compacted,
         bullet_count=counts["bullet_count"],
+        para_count=counts["para_count"],
     )
     contract = OutputContract(name="summary", validate=validate_summary)
     try:
@@ -418,9 +425,8 @@ def generate_outline(
     max_retries: int,
     prompts_dir: Path,
 ) -> LLMOutput | None:
-    """Returns None if transcript is too short for an outline to be useful."""
-    if len(transcript) < 2000 and not chapters:
-        return None
+    """Outlines are disabled."""
+    return None
     tier = _select_tier(len(transcript))
     counts = _adaptive_counts(duration_s)
     compacted = _compact_transcript(transcript, tier)
