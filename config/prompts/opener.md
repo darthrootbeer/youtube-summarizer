@@ -1,6 +1,6 @@
-Write {sentence_count} sentence(s) that explain what this video is about, like you're telling a friend over coffee.
+Write {sentence_count} sentence(s) in English that explain what this video is about, like you're telling a friend over coffee.
 Requirements:
-- Short sentences. Everyday words. No jargon.
+- Short sentences. Everyday words. No jargon. English only.
 - Each sentence must carry one clear, specific idea from the video.
 - Do NOT start with "This video", "The video", "The speaker", "The creator", or any person's name.
 - Do NOT use attribution phrases like "demonstrates", "explains", "covers", "shows", "discusses".
