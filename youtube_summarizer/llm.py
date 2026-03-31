@@ -91,6 +91,9 @@ def validate_summary(text: str) -> bool:
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
         return False
+    # Reject rogue section headers (model inventing its own sections)
+    if re.search(r"^===\s*.+\s*===", s, re.MULTILINE):
+        return False
     if "key takeaways" in lower:
         kt_idx = lower.index("key takeaways")
         before = s[:kt_idx].strip()
@@ -110,7 +113,11 @@ def validate_summary(text: str) -> bool:
                 break  # first bullet found immediately — good
             return False  # non-empty, non-bullet line before first bullet
     else:
+        # No Key Takeaways heading — accept prose-only if long enough and clean
         if len(s) < 100:
+            return False
+        # Reject if model produced section headers but named them something other than Key Takeaways
+        if re.search(r"^(?:#+\s|\*{2})", s, re.MULTILINE):
             return False
     return True
 

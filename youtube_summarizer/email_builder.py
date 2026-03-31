@@ -153,6 +153,8 @@ def _strip_markdown(text: str) -> str:
     """Remove markdown characters that should never appear in email output."""
     # Remove ATX headers (## Heading)
     s = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Remove === section labels (=== SECTION NAME ===)
+    s = re.sub(r"^===.*?===\s*$", "", s, flags=re.MULTILINE)
     # Remove bold/italic markers
     s = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", s)
     s = re.sub(r"_{1,3}(.*?)_{1,3}", r"\1", s)
