@@ -47,6 +47,13 @@ class ContractViolationError(Exception):
 # Validators -- pure functions, fully testable
 # ---------------------------------------------------------------------------
 
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff]")
+
+
+def _has_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(text))
+
+
 _CHATBOT_PHRASES = (
     "it looks like", "it appears", "you've shared", "you have shared",
     "this transcript", "let me ", "i'll ", "sure,", "certainly,",
@@ -60,6 +67,8 @@ def validate_opener(text: str) -> bool:
     """1-4 sentences of plain declarative prose, no lists, no headers, no chatbot phrases."""
     s = (text or "").strip()
     if not s:
+        return False
+    if _has_cjk(s):
         return False
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
@@ -88,6 +97,8 @@ def validate_prose(text: str) -> bool:
     s = (text or "").strip()
     if not s or len(s) < 100:
         return False
+    if _has_cjk(s):
+        return False
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
         return False
@@ -104,6 +115,8 @@ def validate_bullets(text: str, min_count: int = 2) -> bool:
     """All lines are '- ' bullets, no other text, at least min_count."""
     s = (text or "").strip()
     if not s:
+        return False
+    if _has_cjk(s):
         return False
     lower = s.lower()
     if any(phrase in lower for phrase in _CHATBOT_PHRASES):
@@ -179,6 +192,8 @@ def _validation_reason(contract_name: str, text: str) -> str:
     s = (text or "").strip()
     if not s:
         return "empty output"
+    if _has_cjk(s):
+        return "contains CJK characters"
     lower = s.lower()
     for phrase in _CHATBOT_PHRASES:
         if phrase in lower:
