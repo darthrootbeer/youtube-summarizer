@@ -241,6 +241,82 @@ def process_video(
     )
 
 
+def force_process_video(video_id: str, *, dry_run: bool = False, debug: bool = False) -> None:
+    """Force-process a single video by ID, bypassing the seen check."""
+    load_dotenv(repo_root() / ".env")
+    if debug:
+        os.environ["YTS_LOG_LEVEL"] = "DEBUG"
+    _setup_logging(debug)
+
+    settings = load_settings()
+
+    if not _check_ollama():
+        log.error("Ollama is not reachable at localhost:11434. Aborting.")
+        return
+
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    log.info("force: fetching metadata for %s", video_url)
+
+    # Fetch title and channel name via yt-dlp
+    import subprocess
+    env = dict(os.environ)
+    brew_bin = "/opt/homebrew/bin"
+    if brew_bin not in env.get("PATH", ""):
+        env["PATH"] = f"{brew_bin}:{env.get('PATH', '')}"
+    res = subprocess.run(
+        ["yt-dlp", "--print", "%(title)s\t%(uploader)s\t%(upload_date)s", "--no-download", video_url],
+        capture_output=True, text=True, timeout=30, env=env,
+    )
+    if res.returncode != 0 or not res.stdout.strip():
+        log.error("yt-dlp could not fetch metadata for %s: %s", video_id, res.stderr.strip())
+        return
+
+    parts = res.stdout.strip().split("\t")
+    title = strip_hashtags(parts[0]) if len(parts) > 0 else video_id
+    channel_name = parts[1] if len(parts) > 1 else "Unknown"
+    raw_date = parts[2] if len(parts) > 2 else ""
+    published_at = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}" if len(raw_date) == 8 else ""
+
+    video = VideoMeta(
+        video_id=video_id,
+        url=video_url,
+        title=title,
+        published_at=published_at,
+        channel_name=channel_name,
+    )
+
+    log.info("force: processing '%s' by %s", title, channel_name)
+
+    if dry_run:
+        log.info("force: [dry-run] skipping actual processing")
+        return
+
+    result = process_video(video, channel_name, settings)
+
+    write_artifact(
+        video_id=video_id,
+        channel_name=channel_name,
+        video_title=title,
+        video_url=video_url,
+        opener_text=result.opener.text,
+        summary_text=result.summary.text,
+        outline_text=result.outline.text if result.outline else None,
+        transcript_source=result.transcript.source,
+        data_dir=settings.data_dir,
+    )
+    send_gmail_smtp(
+        email_from=settings.email_from,
+        email_to=settings.email_to,
+        gmail_app_password=settings.gmail_app_password,
+        content=EmailContent(
+            subject=result.subject,
+            text=result.email_text,
+            html=result.email_html,
+        ),
+    )
+    log.info("force: done — email sent for '%s'", title)
+
+
 def run_forever(*, poll_seconds: int = 900, limit: int = 10, debug: bool = False) -> None:
     load_dotenv(repo_root() / ".env")
     _setup_logging(debug)

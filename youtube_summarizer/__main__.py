@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
     retry_cmd = sub.add_parser("retry-failed", help="List and retry failed videos")
     retry_cmd.add_argument("--debug", action="store_true", help="Enable debug logging")
 
+    force_cmd = sub.add_parser("force", help="Force-process a video by ID, bypassing seen check")
+    force_cmd.add_argument("video_id", help="YouTube video ID (e.g. 5I5Y6fVSqrk)")
+    force_cmd.add_argument("--dry-run", action="store_true", help="Process but do not send email")
+    force_cmd.add_argument("--debug", action="store_true", help="Enable debug logging")
+
     args = parser.parse_args(argv)
 
     if getattr(args, "debug", False):
@@ -56,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         print("Test email sent successfully.")
+        return 0
+
+    if args.cmd == "force":
+        from youtube_summarizer.pipeline import force_process_video
+        force_process_video(args.video_id, dry_run=args.dry_run, debug=args.debug)
         return 0
 
     if args.cmd == "retry-failed":
