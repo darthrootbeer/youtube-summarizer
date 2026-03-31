@@ -7,6 +7,24 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.10] — 2026-03-31
+
+### Fixed
+- `artifact_exists()` removed — checked the wrong filename (`{video_id}.txt` vs `{summary_id}.txt`) and was never called by the pipeline anyway
+- `scripts/send_test_email.py` deleted — imported from a nonexistent module
+- Dead code (~20 lines) after `return None` in `generate_outline()` removed
+- DB connection in `run_once()` now closes in a `finally` block — no more resource leaks on exception
+- Stale tests updated: opener length threshold, numbered-bullet expectation, subject format
+
+### Changed
+- `run_forever()` now handles SIGTERM gracefully — logs "shutting down" and exits after the current poll instead of dying mid-run
+- Ollama health check now verifies the configured model is actually available; logs available models if not found
+- launchd plist: logs moved from `/tmp/` (wiped on reboot) to `~/Library/Logs/youtube-summarizer/`
+- launchd plist: `ThrottleInterval 30` added to prevent rapid crash-restart loops
+- SETUP.md: install command updated for `__HOME__` placeholder and log directory creation
+
+---
+
 ## [2.0.8] — 2026-03-30
 
 ### Changed
@@ -189,6 +207,9 @@ First public release.
 ---
 
 <!-- Links -->
+[2.0.10]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.8...v2.0.10
+[2.0.8]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.7...v2.0.8
+[2.0.7]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/darthrootbeer/youtube-summarizer/compare/v2.0.3...v2.0.4
