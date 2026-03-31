@@ -45,7 +45,17 @@ def build_email(
         "html": opener_html,
     })
 
-    if not is_short_video:
+    if is_short_video:
+        bullets_only = _extract_bullets(summary.text)
+        if bullets_only:
+            sections.append({
+                "key": "takeaways",
+                "label": None,
+                "style": "body",
+                "text": bullets_only,
+                "html": _render_summary_html(bullets_only),
+            })
+    else:
         summary_html = _render_summary_html(summary.text)
         sections.append({
             "key": "summary",
@@ -124,6 +134,18 @@ def build_email(
     )
 
     return (subject, html, text)
+
+
+def _extract_bullets(text: str) -> str:
+    """Return only the Key Takeaways heading + bullets from a summary, stripping prose."""
+    s = (text or "").strip()
+    lower = s.lower()
+    idx = lower.find("key takeaways")
+    if idx == -1:
+        # No heading — grab any bullet lines directly
+        lines = [ln for ln in s.splitlines() if ln.strip().startswith("- ")]
+        return "\n".join(lines)
+    return s[idx:]
 
 
 def _strip_markdown(text: str) -> str:

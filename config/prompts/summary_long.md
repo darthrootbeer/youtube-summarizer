@@ -9,7 +9,7 @@ Do not use attribution phrases like "demonstrates", "explains", "covers", "shows
 Output this heading on its own line, then exactly {bullet_count} bullet points:
 
 Key Takeaways
-- [one sentence explaining why this idea matters or what it changes — not just what it is]
+- [one short sentence — written like you're telling a friend, plain words, no jargon, no passive voice]
 ...
 
 The heading "Key Takeaways" must appear exactly as shown. Each bullet starts with "- ". No markdown characters (no ##, no **, no *, no _). Stop after the last bullet. No other text.
