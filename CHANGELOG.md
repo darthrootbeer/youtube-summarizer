@@ -7,6 +7,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.8] — 2026-03-30
+
+### Changed
+- Prompts use explicit `=== SECTION 1/2 ===` structure to force model to output both prose and takeaways
+- Attribution phrases banned in prompts (`demonstrates`, `explains`, `covers`, etc.)
+- `_fmt_duration` helper added to email_builder for formatted duration display
+- Validation logging improvements in llm.py
+- Fetcher improvements (from gojira unpushed commits, now merged)
+
+---
+
 ## [2.0.7] — 2026-03-30
 
 ### Changed
