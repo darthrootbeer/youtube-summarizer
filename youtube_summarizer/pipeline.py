@@ -46,11 +46,19 @@ def _setup_logging(debug: bool = False) -> None:
     )
 
 
-def _check_ollama() -> bool:
-    """Returns True if Ollama is reachable."""
+def _check_ollama(model: str | None = None) -> bool:
+    """Returns True if Ollama is reachable and the configured model is available."""
     try:
         resp = requests.get("http://localhost:11434/api/tags", timeout=10)
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            return False
+        if model:
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
+            # Ollama names may include a tag (e.g. "qwen2.5:14b") — match on prefix
+            if not any(m == model or m.startswith(model + ":") or model.startswith(m.split(":")[0]) for m in models):
+                log.error("Ollama model %r not found. Available: %s", model, ", ".join(models) or "(none)")
+                return False
+        return True
     except Exception as e:
         log.error("Ollama health check failed: %s", e)
         return False
@@ -70,8 +78,8 @@ def run_once(limit: int = 10, dry_run: bool = False, debug: bool = False) -> int
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
-    if not _check_ollama():
-        log.error("Ollama is not reachable at localhost:11434. Aborting.")
+    if not _check_ollama(settings.ollama_model):
+        log.error("Ollama is not reachable or model not available. Aborting.")
         return 0
 
     log.info("run_once: %d source(s), limit=%d, dry_run=%s, model=%s",
@@ -258,8 +266,8 @@ def force_process_video(video_id: str, *, dry_run: bool = False, debug: bool = F
 
     settings = load_settings()
 
-    if not _check_ollama():
-        log.error("Ollama is not reachable at localhost:11434. Aborting.")
+    if not _check_ollama(settings.ollama_model):
+        log.error("Ollama is not reachable or model not available. Aborting.")
         return
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"

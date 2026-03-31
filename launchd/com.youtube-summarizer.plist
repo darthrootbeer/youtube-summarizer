@@ -18,9 +18,12 @@
     <key>KeepAlive</key>
     <true/>
 
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
     <key>StandardOutPath</key>
-    <string>/tmp/youtube-summarizer.out.log</string>
+    <string>__HOME__/Library/Logs/youtube-summarizer/out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/youtube-summarizer.err.log</string>
+    <string>__HOME__/Library/Logs/youtube-summarizer/err.log</string>
   </dict>
 </plist>
