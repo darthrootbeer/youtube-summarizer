@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,11 +46,19 @@ def _setup_logging(debug: bool = False) -> None:
     )
 
 
-def _check_ollama() -> bool:
-    """Returns True if Ollama is reachable."""
+def _check_ollama(model: str | None = None) -> bool:
+    """Returns True if Ollama is reachable and the configured model is available."""
     try:
         resp = requests.get("http://localhost:11434/api/tags", timeout=10)
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            return False
+        if model:
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
+            # Ollama names may include a tag (e.g. "qwen2.5:14b") — match on prefix
+            if not any(m == model or m.startswith(model + ":") or model.startswith(m.split(":")[0]) for m in models):
+                log.error("Ollama model %r not found. Available: %s", model, ", ".join(models) or "(none)")
+                return False
+        return True
     except Exception as e:
         log.error("Ollama health check failed: %s", e)
         return False
@@ -69,28 +78,65 @@ def run_once(limit: int = 10, dry_run: bool = False, debug: bool = False) -> int
     if not channels:
         raise RuntimeError("No channels configured. Add entries to config/channels.toml.")
 
-    if not _check_ollama():
-        log.error("Ollama is not reachable at localhost:11434. Aborting.")
+    if not _check_ollama(settings.ollama_model):
+        log.error("Ollama is not reachable or model not available. Aborting.")
         return 0
 
     log.info("run_once: %d source(s), limit=%d, dry_run=%s, model=%s",
              len(channels), limit, settings.dry_run, settings.ollama_model)
 
     conn = db.connect(settings.data_dir)
-    bootstrapped_at = db.get_bootstrapped_at(conn)
+    try:
+        bootstrapped_at = db.get_bootstrapped_at(conn)
 
-    # Bootstrap: mark all current videos as seen, don't send emails
-    if not bootstrapped_at:
-        log.info("First run — bootstrapping (marking existing videos as seen)")
+        # Bootstrap: mark all current videos as seen, don't send emails
+        if not bootstrapped_at:
+            log.info("First run — bootstrapping (marking existing videos as seen)")
+            for ch in channels:
+                rss = source_url_to_rss(ch.url)
+                if not rss:
+                    log.warning("Could not build RSS URL for %s — skipping", ch.url)
+                    continue
+                videos = fetch_videos_from_rss(rss, limit=30)
+                channel_name = ch.name or ch.url
+                for v in videos:
+                    if not db.has_seen(conn, v.video_id):
+                        db.mark_seen(conn, db.SeenVideo(
+                            video_id=v.video_id,
+                            video_url=v.url,
+                            channel_name=channel_name,
+                            video_title=v.title,
+                            published_at=v.published_at,
+                        ))
+                log.info("[bootstrap] %s: marked %d existing video(s) as seen", channel_name, len(videos))
+            db.set_bootstrapped(conn)
+            log.info("Bootstrap complete. Next run will process new videos.")
+            return 0
+
+        processed = 0
+        remaining = max(1, limit)
+
         for ch in channels:
+            if remaining <= 0:
+                break
+
             rss = source_url_to_rss(ch.url)
             if not rss:
                 log.warning("Could not build RSS URL for %s — skipping", ch.url)
                 continue
-            videos = fetch_videos_from_rss(rss, limit=30)
+
             channel_name = ch.name or ch.url
+            videos = fetch_videos_from_rss(rss, limit=30)
+            log.debug("RSS: '%s' returned %d video(s)", channel_name, len(videos))
+
             for v in videos:
-                if not db.has_seen(conn, v.video_id):
+                if remaining <= 0:
+                    break
+                if db.has_seen(conn, v.video_id):
+                    continue
+                # Pre-bootstrap guard
+                if v.published_at and v.published_at < bootstrapped_at:
+                    log.info("  skip (pre-bootstrap): %s", v.title)
                     db.mark_seen(conn, db.SeenVideo(
                         video_id=v.video_id,
                         video_url=v.url,
@@ -98,36 +144,9 @@ def run_once(limit: int = 10, dry_run: bool = False, debug: bool = False) -> int
                         video_title=v.title,
                         published_at=v.published_at,
                     ))
-            log.info("[bootstrap] %s: marked %d existing video(s) as seen", channel_name, len(videos))
-        db.set_bootstrapped(conn)
-        log.info("Bootstrap complete. Next run will process new videos.")
-        conn.close()
-        return 0
+                    continue
 
-    processed = 0
-    remaining = max(1, limit)
-
-    for ch in channels:
-        if remaining <= 0:
-            break
-
-        rss = source_url_to_rss(ch.url)
-        if not rss:
-            log.warning("Could not build RSS URL for %s — skipping", ch.url)
-            continue
-
-        channel_name = ch.name or ch.url
-        videos = fetch_videos_from_rss(rss, limit=30)
-        log.debug("RSS: '%s' returned %d video(s)", channel_name, len(videos))
-
-        for v in videos:
-            if remaining <= 0:
-                break
-            if db.has_seen(conn, v.video_id):
-                continue
-            # Pre-bootstrap guard
-            if v.published_at and v.published_at < bootstrapped_at:
-                log.info("  skip (pre-bootstrap): %s", v.title)
+                # Mark seen IMMEDIATELY before processing
                 db.mark_seen(conn, db.SeenVideo(
                     video_id=v.video_id,
                     video_url=v.url,
@@ -135,60 +154,51 @@ def run_once(limit: int = 10, dry_run: bool = False, debug: bool = False) -> int
                     video_title=v.title,
                     published_at=v.published_at,
                 ))
-                continue
 
-            # Mark seen IMMEDIATELY before processing
-            db.mark_seen(conn, db.SeenVideo(
-                video_id=v.video_id,
-                video_url=v.url,
-                channel_name=channel_name,
-                video_title=v.title,
-                published_at=v.published_at,
-            ))
+                if settings.dry_run:
+                    log.info("  [dry-run] would process: %s — %s", channel_name, v.title)
+                    remaining -= 1
+                    processed += 1
+                    continue
 
-            if settings.dry_run:
-                log.info("  [dry-run] would process: %s — %s", channel_name, v.title)
+                try:
+                    result = process_video(v, channel_name, settings)
+                    # Write artifact
+                    write_artifact(
+                        video_id=v.video_id,
+                        summary_id=result.summary_id,
+                        channel_name=channel_name,
+                        video_title=v.title,
+                        video_url=v.url,
+                        opener_text=result.opener.text,
+                        summary_text=result.summary.text,
+                        outline_text=result.outline.text if result.outline else None,
+                        transcript_source=result.transcript.source,
+                        data_dir=settings.data_dir,
+                    )
+                    # Send email
+                    send_gmail_smtp(
+                        email_from=settings.email_from,
+                        email_to=settings.email_to,
+                        gmail_app_password=settings.gmail_app_password,
+                        content=EmailContent(
+                            subject=result.subject,
+                            text=result.email_text,
+                            html=result.email_html,
+                        ),
+                    )
+                    log.info("  done: %s — %s", channel_name, v.title)
+                except Exception as e:
+                    log.error("  FAILED: %s — %s: %s", channel_name, v.title, e)
+                    db.mark_failed(conn, v.video_id, channel_name, v.title, v.url, str(e))
+
                 remaining -= 1
                 processed += 1
-                continue
 
-            try:
-                result = process_video(v, channel_name, settings)
-                # Write artifact
-                write_artifact(
-                    video_id=v.video_id,
-                    summary_id=result.summary_id,
-                    channel_name=channel_name,
-                    video_title=v.title,
-                    video_url=v.url,
-                    opener_text=result.opener.text,
-                    summary_text=result.summary.text,
-                    outline_text=result.outline.text if result.outline else None,
-                    transcript_source=result.transcript.source,
-                    data_dir=settings.data_dir,
-                )
-                # Send email
-                send_gmail_smtp(
-                    email_from=settings.email_from,
-                    email_to=settings.email_to,
-                    gmail_app_password=settings.gmail_app_password,
-                    content=EmailContent(
-                        subject=result.subject,
-                        text=result.email_text,
-                        html=result.email_html,
-                    ),
-                )
-                log.info("  done: %s — %s", channel_name, v.title)
-            except Exception as e:
-                log.error("  FAILED: %s — %s: %s", channel_name, v.title, e)
-                db.mark_failed(conn, v.video_id, channel_name, v.title, v.url, str(e))
-
-            remaining -= 1
-            processed += 1
-
-    log.info("run_once complete: processed %d video(s)", processed)
-    conn.close()
-    return processed
+        log.info("run_once complete: processed %d video(s)", processed)
+        return processed
+    finally:
+        conn.close()
 
 
 def process_video(
@@ -256,8 +266,8 @@ def force_process_video(video_id: str, *, dry_run: bool = False, debug: bool = F
 
     settings = load_settings()
 
-    if not _check_ollama():
-        log.error("Ollama is not reachable at localhost:11434. Aborting.")
+    if not _check_ollama(settings.ollama_model):
+        log.error("Ollama is not reachable or model not available. Aborting.")
         return
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -327,9 +337,21 @@ def force_process_video(video_id: str, *, dry_run: bool = False, debug: bool = F
 def run_forever(*, poll_seconds: int = 900, limit: int = 10, debug: bool = False) -> None:
     load_dotenv(repo_root() / ".env")
     _setup_logging(debug)
+
+    _stop = False
+
+    def _handle_sigterm(signum, frame):
+        nonlocal _stop
+        log.info("SIGTERM received — shutting down after current poll")
+        _stop = True
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     log.info("Starting watch loop (poll_seconds=%d, limit=%d)", poll_seconds, limit)
-    while True:
+    while not _stop:
         n = run_once(limit=limit, debug=debug)
+        if _stop:
+            break
         if n <= 0:
             log.debug("No new videos found — sleeping %ds", poll_seconds)
             time.sleep(max(5, int(poll_seconds)))

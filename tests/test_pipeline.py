@@ -228,8 +228,8 @@ def test_process_video_returns_processed_video(tmp_path):
         result = process_video(video, "Test Channel", settings)
 
     assert isinstance(result, ProcessedVideo)
-    assert result.subject.startswith("[T] ")
-    assert "Test Channel" in result.subject
+    assert result.subject.startswith("[YT] ")
+    assert "Test Video" in result.subject
 
 
 def test_run_once_skips_pre_bootstrap_videos(pipeline_env):

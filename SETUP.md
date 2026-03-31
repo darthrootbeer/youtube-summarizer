@@ -117,9 +117,14 @@ Remove `--dry-run` to send a real email.
 To run automatically every 15 minutes, install the launchd service:
 
 ```bash
-# Substitute your actual project path and install the plist
-sed "s|__PROJECT_PATH__|$(pwd)|g" launchd/com.youtube-summarizer.plist \
+# Substitute your actual project path + home dir, then install the plist
+sed -e "s|__PROJECT_PATH__|$(pwd)|g" \
+    -e "s|__HOME__|$HOME|g" \
+    launchd/com.youtube-summarizer.plist \
   > ~/Library/LaunchAgents/com.youtube-summarizer.plist
+
+# Create the log directory
+mkdir -p ~/Library/Logs/youtube-summarizer
 
 launchctl load ~/Library/LaunchAgents/com.youtube-summarizer.plist
 ```
@@ -131,7 +136,7 @@ launchctl unload ~/Library/LaunchAgents/com.youtube-summarizer.plist
 launchctl load  ~/Library/LaunchAgents/com.youtube-summarizer.plist
 ```
 
-Logs: `/tmp/youtube-summarizer.out.log` and `/tmp/youtube-summarizer.err.log`
+Logs: `~/Library/Logs/youtube-summarizer/out.log` and `~/Library/Logs/youtube-summarizer/err.log`
 
 ---
 

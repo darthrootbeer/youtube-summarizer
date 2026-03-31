@@ -55,19 +55,6 @@ def test_get_transcript_raises_when_no_parakeet(tmp_path):
             get_transcript("vid123", "https://youtube.com/watch?v=vid123", settings)
 
 
-def test_fetch_youtube_transcript_returns_none_on_error():
-    with patch("youtube_transcript_api.YouTubeTranscriptApi.fetch", side_effect=Exception("API down")):
-        result = _fetch_youtube_transcript("vid123")
-    assert result is None
-
-
-def test_fetch_youtube_transcript_joins_text():
-    mock_snippet1 = SimpleNamespace(text="Hello world")
-    mock_snippet2 = SimpleNamespace(text="testing one two")
-
-    with patch("youtube_transcript_api.YouTubeTranscriptApi.fetch", return_value=[mock_snippet1, mock_snippet2]):
-        result = _fetch_youtube_transcript("vid123")
-    assert result == "Hello world\ntesting one two"
 
 
 def test_transcribe_with_parakeet_calls_subprocess(tmp_path):

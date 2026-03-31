@@ -1,10 +1,23 @@
 from pathlib import Path
-from youtube_summarizer.artifacts import artifact_exists, write_artifact
+from youtube_summarizer.artifacts import make_summary_id, write_artifact
+
+
+def test_make_summary_id_format():
+    sid = make_summary_id("abc123")
+    assert sid.startswith("abc123-")
+    assert len(sid) == len("abc123-") + 6  # 3 hex bytes = 6 chars
+
+
+def test_make_summary_id_unique():
+    ids = {make_summary_id("vid") for _ in range(20)}
+    assert len(ids) == 20
 
 
 def test_write_artifact_creates_file(tmp_data_dir):
+    sid = make_summary_id("abc123")
     path = write_artifact(
         video_id="abc123",
+        summary_id=sid,
         channel_name="Test Channel",
         video_title="Test Video",
         video_url="https://youtube.com/watch?v=abc123",
@@ -15,12 +28,14 @@ def test_write_artifact_creates_file(tmp_data_dir):
         data_dir=tmp_data_dir,
     )
     assert path.exists()
-    assert path.name == "abc123.txt"
+    assert path.name == f"{sid}.txt"
 
 
 def test_write_artifact_content(tmp_data_dir):
+    sid = make_summary_id("abc123")
     write_artifact(
         video_id="abc123",
+        summary_id=sid,
         channel_name="Test Channel",
         video_title="Test Video",
         video_url="https://youtube.com/watch?v=abc123",
@@ -30,53 +45,10 @@ def test_write_artifact_content(tmp_data_dir):
         transcript_source="parakeet_mlx",
         data_dir=tmp_data_dir,
     )
-    content = (tmp_data_dir / "summaries" / "abc123.txt").read_text()
+    content = (tmp_data_dir / "summaries" / f"{sid}.txt").read_text()
+    assert f"summary_id: {sid}" in content
     assert "video_id: abc123" in content
     assert "OPENER" in content
     assert "SUMMARY" in content
     assert "OUTLINE" in content
     assert "parakeet_mlx" in content
-
-
-def test_artifact_exists(tmp_data_dir):
-    assert artifact_exists("abc123", tmp_data_dir) is False
-    write_artifact(
-        video_id="abc123",
-        channel_name="Ch",
-        video_title="T",
-        video_url="https://example.com",
-        opener_text="o",
-        summary_text="s",
-        outline_text=None,
-        transcript_source="youtube_api",
-        data_dir=tmp_data_dir,
-    )
-    assert artifact_exists("abc123", tmp_data_dir) is True
-
-
-def test_write_artifact_overwrites(tmp_data_dir):
-    write_artifact(
-        video_id="abc123",
-        channel_name="Ch",
-        video_title="T",
-        video_url="https://example.com",
-        opener_text="first",
-        summary_text="s",
-        outline_text=None,
-        transcript_source="youtube_api",
-        data_dir=tmp_data_dir,
-    )
-    write_artifact(
-        video_id="abc123",
-        channel_name="Ch",
-        video_title="T",
-        video_url="https://example.com",
-        opener_text="second",
-        summary_text="s",
-        outline_text=None,
-        transcript_source="youtube_api",
-        data_dir=tmp_data_dir,
-    )
-    content = (tmp_data_dir / "summaries" / "abc123.txt").read_text()
-    assert "second" in content
-    assert "first" not in content

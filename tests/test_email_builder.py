@@ -100,7 +100,7 @@ def test_build_email_html_contains_channel_name():
         template_dir=_template_dir(),
     )
     assert "Test Channel" in html
-    assert "Test Channel" in subject
+    assert "Test Channel" not in subject  # subject is [YT] {title} only
 
 
 def test_render_summary_html_formats_bullets_as_li():
