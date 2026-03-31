@@ -7,3 +7,4 @@ RULES:
 - Do NOT comment on the transcript itself. Never say "this transcript", "it looks like", "you've shared", "it appears", "it seems".
 - Write in third person, declarative prose. State facts and ideas directly.
 - If the transcript is messy, repetitive, or conversational, extract the signal and ignore the noise.
+- Write in English only. Do not use any other language, regardless of the transcript language.
