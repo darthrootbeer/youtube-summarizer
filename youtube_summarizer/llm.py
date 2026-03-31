@@ -100,6 +100,15 @@ def validate_summary(text: str) -> bool:
         bullets = re.findall(r"^(?:[-*\u2022]|\d+[.)])\s", after, re.MULTILINE)
         if len(bullets) < 2:
             return False
+        # Reject preamble text between heading and first bullet
+        lines_after_heading = after.splitlines()[1:]  # skip the "Key Takeaways" line itself
+        for line in lines_after_heading:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if re.match(r"^(?:[-*\u2022]|\d+[.)])\s", stripped):
+                break  # first bullet found immediately — good
+            return False  # non-empty, non-bullet line before first bullet
     else:
         if len(s) < 100:
             return False
