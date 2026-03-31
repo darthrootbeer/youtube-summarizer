@@ -43,7 +43,3 @@ def write_artifact(
     )
     out_path.write_text(content, encoding="utf-8")
     return out_path
-
-
-def artifact_exists(video_id: str, data_dir: Path) -> bool:
-    return (data_dir / "summaries" / f"{video_id}.txt").exists()

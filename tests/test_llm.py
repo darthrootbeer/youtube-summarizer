@@ -47,7 +47,7 @@ def test_validate_opener_rejects_bullets():
 
 
 def test_validate_opener_rejects_too_long():
-    assert validate_opener("A" * 501) is False
+    assert validate_opener("A" * 651) is False
 
 
 def test_validate_opener_rejects_empty():
@@ -237,7 +237,8 @@ def test_deterministic_fallback_summary_has_bullets():
     assert bullet_count >= 2
 
 
-def test_validate_summary_accepts_numbered_bullets():
+def test_validate_summary_rejects_numbered_bullets():
+    # Numbered lists are not accepted — only "- " bullets pass
     from youtube_summarizer.llm import validate_summary
     text = (
         "The AI job market has split into two distinct segments. On one side, "
@@ -249,7 +250,7 @@ def test_validate_summary_accepts_numbered_bullets():
         "2. Specific skills like prompt engineering are highly valued\n"
         "3. The market rewards hands-on AI experience over credentials"
     )
-    assert validate_summary(text) is True
+    assert validate_summary(text) is False
 
 
 def test_validate_summary_still_rejects_no_bullets():

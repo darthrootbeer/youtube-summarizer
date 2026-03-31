@@ -427,21 +427,3 @@ def generate_outline(
 ) -> LLMOutput | None:
     """Outlines are disabled."""
     return None
-    tier = _select_tier(len(transcript))
-    counts = _adaptive_counts(duration_s)
-    compacted = _compact_transcript(transcript, tier)
-    preamble = _load_preamble(prompts_dir)
-    template = _load_prompt(prompts_dir, "outline.md")
-    prompt = _build_prompt(
-        preamble, template,
-        video_title=video_title,
-        transcript=compacted,
-        outline_points=counts["outline_points"],
-    )
-    contract = OutputContract(name="outline", validate=validate_outline)
-    try:
-        text, attempts = _call_with_contract(prompt, contract, model, timeout, max_retries)
-        return LLMOutput(text=text, tier=tier, attempts=attempts, used_fallback=False)
-    except ContractViolationError:
-        log.warning("Outline contract exhausted -- skipping outline section")
-        return None
